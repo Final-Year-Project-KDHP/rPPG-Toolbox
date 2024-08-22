@@ -104,13 +104,16 @@ def calculate_metrics(predictions, labels, config):
         filename_id = model_file_root + "_" + config.TEST.DATA.DATASET
     else:
         raise ValueError('Metrics.py evaluation only supports train_and_test and only_test!')
-
+    
     if config.INFERENCE.EVALUATION_METHOD == "FFT":
+        print("Ground Truths:", list(gt_hr_fft_all))
+        print("Predicted Heart Rates:", list(predict_hr_fft_all))
         gt_hr_fft_all = np.array(gt_hr_fft_all)
         predict_hr_fft_all = np.array(predict_hr_fft_all)
         SNR_all = np.array(SNR_all)
         MACC_all = np.array(MACC_all)
         num_test_samples = len(predict_hr_fft_all)
+        
         for metric in config.TEST.METRICS:
             if metric == "MAE":
                 MAE_FFT = np.mean(np.abs(predict_hr_fft_all - gt_hr_fft_all))
@@ -146,21 +149,23 @@ def calculate_metrics(predictions, labels, config):
                 pass
             elif "BA" in metric:  
                 compare = BlandAltman(gt_hr_fft_all, predict_hr_fft_all, config, averaged=True)
-                compare.scatter_plot(
-                    x_label='GT PPG HR [bpm]',
-                    y_label='rPPG HR [bpm]',
-                    show_legend=True, figure_size=(5, 5),
-                    the_title=f'{filename_id}_FFT_BlandAltman_ScatterPlot',
-                    file_name=f'{filename_id}_FFT_BlandAltman_ScatterPlot.pdf')
-                compare.difference_plot(
-                    x_label='Difference between rPPG HR and GT PPG HR [bpm]',
-                    y_label='Average of rPPG HR and GT PPG HR [bpm]',
-                    show_legend=True, figure_size=(5, 5),
-                    the_title=f'{filename_id}_FFT_BlandAltman_DifferencePlot',
-                    file_name=f'{filename_id}_FFT_BlandAltman_DifferencePlot.pdf')
+                # compare.scatter_plot(
+                #     x_label='GT PPG HR [bpm]',
+                #     y_label='rPPG HR [bpm]',
+                #     show_legend=True, figure_size=(5, 5),
+                #     the_title=f'{filename_id}_FFT_BlandAltman_ScatterPlot',
+                #     file_name=f'{filename_id}_FFT_BlandAltman_ScatterPlot.pdf')
+                # compare.difference_plot(
+                #     x_label='Difference between rPPG HR and GT PPG HR [bpm]',
+                #     y_label='Average of rPPG HR and GT PPG HR [bpm]',
+                #     show_legend=True, figure_size=(5, 5),
+                #     the_title=f'{filename_id}_FFT_BlandAltman_DifferencePlot',
+                #     file_name=f'{filename_id}_FFT_BlandAltman_DifferencePlot.pdf')
             else:
                 raise ValueError("Wrong Test Metric Type")
     elif config.INFERENCE.EVALUATION_METHOD == "peak detection":
+        print("Ground Truths:", list(gt_hr_peak_all))
+        print("Predicted Heart Rates:", list(predict_hr_peak_all))
         gt_hr_peak_all = np.array(gt_hr_peak_all)
         predict_hr_peak_all = np.array(predict_hr_peak_all)
         SNR_all = np.array(SNR_all)
@@ -172,12 +177,12 @@ def calculate_metrics(predictions, labels, config):
                 standard_error = np.std(np.abs(predict_hr_peak_all - gt_hr_peak_all)) / np.sqrt(num_test_samples)
                 print("Peak MAE (Peak Label): {0} +/- {1}".format(MAE_PEAK, standard_error))
             elif metric == "RMSE":
-                MSE_PEAK = np.mean(np.square(predict_hr_fft_all - gt_hr_fft_all))
+                MSE_PEAK = np.mean(np.square(predict_hr_peak_all - gt_hr_peak_all))
                 RMSE_PEAK = np.sqrt(MSE_PEAK)
                 # In the case of standard error (SE) for RMSE, scale the standard error relative to the RMSE
                 # which is less sensitive to possible outliers. This should prevent the SE from becoming too
                 # large, and exaggerated, due to large, squared errors.
-                MSE_PEAK_se = np.std(np.square(predict_hr_fft_all - gt_hr_fft_all)) / np.sqrt(num_test_samples)
+                MSE_PEAK_se = np.std(np.square(predict_hr_peak_all - gt_hr_peak_all)) / np.sqrt(num_test_samples)
                 standard_error = MSE_PEAK_se / (2 * np.sqrt(MSE_PEAK))
                 print("PEAK RMSE (Peak Label): {0} +/- {1}".format(RMSE_PEAK, standard_error))
             elif metric == "MAPE":
@@ -201,18 +206,18 @@ def calculate_metrics(predictions, labels, config):
                 pass
             elif "BA" in metric:
                 compare = BlandAltman(gt_hr_peak_all, predict_hr_peak_all, config, averaged=True)
-                compare.scatter_plot(
-                    x_label='GT PPG HR [bpm]',
-                    y_label='rPPG HR [bpm]',
-                    show_legend=True, figure_size=(5, 5),
-                    the_title=f'{filename_id}_Peak_BlandAltman_ScatterPlot',
-                    file_name=f'{filename_id}_Peak_BlandAltman_ScatterPlot.pdf')
-                compare.difference_plot(
-                    x_label='Difference between rPPG HR and GT PPG HR [bpm]',
-                    y_label='Average of rPPG HR and GT PPG HR [bpm]',
-                    show_legend=True, figure_size=(5, 5),
-                    the_title=f'{filename_id}_Peak_BlandAltman_DifferencePlot',
-                    file_name=f'{filename_id}_Peak_BlandAltman_DifferencePlot.pdf')
+                # compare.scatter_plot(
+                #     x_label='GT PPG HR [bpm]',
+                #     y_label='rPPG HR [bpm]',
+                #     show_legend=True, figure_size=(5, 5),
+                #     the_title=f'{filename_id}_Peak_BlandAltman_ScatterPlot',
+                #     file_name=f'{filename_id}_Peak_BlandAltman_ScatterPlot.pdf')
+                # compare.difference_plot(
+                #     x_label='Difference between rPPG HR and GT PPG HR [bpm]',
+                #     y_label='Average of rPPG HR and GT PPG HR [bpm]',
+                #     show_legend=True, figure_size=(5, 5),
+                #     the_title=f'{filename_id}_Peak_BlandAltman_DifferencePlot',
+                #     file_name=f'{filename_id}_Peak_BlandAltman_DifferencePlot.pdf')
             else:
                 raise ValueError("Wrong Test Metric Type")
     else:
