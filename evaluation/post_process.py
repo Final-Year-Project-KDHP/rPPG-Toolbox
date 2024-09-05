@@ -136,6 +136,16 @@ def calculate_metric_per_video(predictions, labels, fs=30, diff_flag=True, use_b
         labels = scipy.signal.filtfilt(b, a, np.double(labels))
     
     macc = _compute_macc(predictions, labels)
+    os.makedirs("/content/arrays", exist_ok=True)
+
+    for i in range(3):
+        if os.path.exists(f"/content/arrays/predictions_{i}.npy"):
+            continue
+
+        np.save(f"/content/arrays/predictions_{i}.npy", predictions)
+        np.save(f"/content/arrays/labels_{i}.npy", labels)
+        
+        break
 
     if hr_method == 'FFT':
         hr_pred = _calculate_fft_hr(predictions, fs=fs)

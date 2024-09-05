@@ -3,6 +3,8 @@
 import argparse
 import random
 import time
+import shutil
+import os
 
 import numpy as np
 import torch
@@ -128,6 +130,9 @@ def unsupervised_method_inference(config, data_loader):
 
 if __name__ == "__main__":
     # parse arguments.
+    directory = "/content/arrays"
+    if os.path.exists(directory):
+        shutil.rmtree(directory)
     parser = argparse.ArgumentParser()
     parser = add_args(parser)
     parser = trainer.BaseTrainer.BaseTrainer.add_trainer_args(parser)
