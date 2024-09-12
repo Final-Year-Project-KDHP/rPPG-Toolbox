@@ -212,7 +212,8 @@ class ViT_ST_ST_Compact3_TDC_gra_sharp(nn.Module):
 
         # Image and patch sizes
         t, h, w = as_tuple(image_size)  # tube sizes
-        ft, fh, fw = as_tuple(patches)  # patch sizes, ft = 4 ==> 160/4=40
+        print("patches:",patches)
+        ft, fh, fw = as_tuple(patches)  # patch sizes, ft = 4 ==> 160/4=40    [4,4,4]
         gt, gh, gw = t//ft, h // fh, w // fw  # number of patches
         seq_len = gh * gw * gt
 
@@ -284,29 +285,40 @@ class ViT_ST_ST_Compact3_TDC_gra_sharp(nn.Module):
 
         # b is batch number, c channels, t frame, fh frame height, and fw frame width
         b, c, t, fh, fw = x.shape
+        print("x shape", x.shape)
         
         x = self.Stem0(x)
         x = self.Stem1(x)
         x = self.Stem2(x)  # [B, 64, 160, 64, 64]
+        print("stem shape:", x.shape)
         
         x = self.patch_embedding(x)  # [B, 64, 40, 4, 4]
+        print("patch embedding:", x.shape)
         x = x.flatten(2).transpose(1, 2)  # [B, 40*4*4, 64]
+        print("flatten shape:", x.shape)
         
         
         Trans_features, Score1 =  self.transformer1(x, gra_sharp)  # [B, 4*4*40, 64]
+        print("first transformer:", Trans_features.shape)
         Trans_features2, Score2 =  self.transformer2(Trans_features, gra_sharp)  # [B, 4*4*40, 64]
         Trans_features3, Score3 =  self.transformer3(Trans_features2, gra_sharp)  # [B, 4*4*40, 64]
         
         # upsampling heads
         #features_last = Trans_features3.transpose(1, 2).view(b, self.dim, 40, 4, 4) # [B, 64, 40, 4, 4]
         features_last = Trans_features3.transpose(1, 2).view(b, self.dim, t//4, 4, 4) # [B, 64, 40, 4, 4]
+        print("feature last:", features_last.shape)
         
         features_last = self.upsample(features_last)		    # x [B, 64, 7*7, 80]
+        print("upsample 1:", features_last.shape)
         features_last = self.upsample2(features_last)		    # x [B, 32, 7*7, 160]
+        print("upsample 2:", features_last.shape)
         
         features_last = torch.mean(features_last,3)     # x [B, 32, 160, 4]  
+        print("first mean:", features_last.shape)
         features_last = torch.mean(features_last,3)     # x [B, 32, 160]    
+        print("second mean:", features_last.shape)
         rPPG = self.ConvBlockLast(features_last)    # x [B, 1, 160]
+        print("last conv:", rPPG.shape)
         
         rPPG = rPPG.squeeze(1)
         
