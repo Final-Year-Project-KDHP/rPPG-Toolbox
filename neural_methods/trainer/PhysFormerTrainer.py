@@ -15,6 +15,7 @@ import numpy as np
 import math
 import torch
 import torch.optim as optim
+import torch.nn.functional as F
 from evaluation.metrics import calculate_metrics
 from neural_methods.loss.PhysNetNegPearsonLoss import Neg_Pearson
 from neural_methods.loss.PhysFormerLossComputer import TorchLossComputer
@@ -93,70 +94,74 @@ class PhysFormerTrainer(BaseTrainer):
         for epoch in range(self.max_epoch_num):
             print('')
             print(f"====Training Epoch: {epoch}====")
-            loss_rPPG_avg = []
-            loss_peak_avg = []
-            loss_kl_avg_test = []
-            loss_hr_mae = []
+            # loss_rPPG_avg = []
+            # loss_peak_avg = []
+            # loss_kl_avg_test = []
+            # loss_hr_mae = []
+            loss_spo2_rmse = []
 
             self.model.train()
             tbar = tqdm(data_loader["train"], ncols=80)
             for idx, batch in enumerate(tbar):
-                hr = torch.tensor([self.get_hr(i) for i in batch[1]]).float().to(self.device)
+                # hr = torch.tensor([self.get_hr(i) for i in batch[1]]).float().to(self.device)
                 data, label = batch[0].float().to(self.device), batch[1].float().to(self.device)
 
                 self.optimizer.zero_grad()
 
                 gra_sharp = 2.0
-                rPPG, _, _, _ = self.model(data, gra_sharp)
-                rPPG = (rPPG-torch.mean(rPPG, axis=-1).view(-1, 1))/torch.std(rPPG, axis=-1).view(-1, 1)    # normalize
-                loss_rPPG = self.criterion_Pearson(rPPG, label)
+                rspo2, _, _, _ = self.model(data, gra_sharp)
+                # rPPG = (rPPG-torch.mean(rPPG, axis=-1).view(-1, 1))/torch.std(rPPG, axis=-1).view(-1, 1)    # normalize
+                # loss_rPPG = self.criterion_Pearson(rPPG, label)
 
-                fre_loss = 0.0
-                kl_loss = 0.0
-                train_mae = 0.0
+                # fre_loss = 0.0
+                # kl_loss = 0.0
+                # train_mae = 0.0
+                rmse_loss = 0.0
                 for bb in range(data.shape[0]):
-                    loss_distribution_kl, \
-                    fre_loss_temp, \
-                    train_mae_temp = TorchLossComputer.cross_entropy_power_spectrum_DLDL_softmax2(
-                        rPPG[bb],
-                        hr[bb],
-                        self.frame_rate,
-                        std=1.0
-                    )
-                    fre_loss = fre_loss+fre_loss_temp
-                    kl_loss = kl_loss+loss_distribution_kl
-                    train_mae = train_mae+train_mae_temp
-                fre_loss /= data.shape[0]
-                kl_loss /= data.shape[0]
-                train_mae /= data.shape[0]
+                    # loss_distribution_kl, \
+                    # fre_loss_temp, \
+                    # train_mae_temp = TorchLossComputer.cross_entropy_power_spectrum_DLDL_softmax2(
+                    #     rPPG[bb],
+                    #     hr[bb],
+                    #     self.frame_rate,
+                    #     std=1.0
+                    # )
+                    rmse_loss = rmse_loss + torch.sqrt(F.mse_loss(rspo2[bb], lable[bb]))
+                    # fre_loss = fre_loss+fre_loss_temp
+                    # kl_loss = kl_loss+loss_distribution_kl
+                    # train_mae = train_mae+train_mae_temp
+                # fre_loss /= data.shape[0]
+                # kl_loss /= data.shape[0]
+                # train_mae /= data.shape[0]
+                rmse_loss /= data.shape[0]
 
-                if epoch>10:
-                    a = 0.05
-                    b = 5.0
-                else:
-                    a = a_start
-                    # exp ascend
-                    b = b_start*math.pow(exp_b, epoch/10.0)
+                # if epoch>10:
+                #     a = 0.05
+                #     b = 5.0
+                # else:
+                #     a = a_start
+                #     # exp ascend
+                #     b = b_start*math.pow(exp_b, epoch/10.0)
 
-                loss = a*loss_rPPG + b*(fre_loss+kl_loss)
+                # loss = a*loss_rPPG + b*(fre_loss+kl_loss)
+                loss = rmse_loss
                 loss.backward()
                 self.optimizer.step()
 
                 n = data.size(0)
-                loss_rPPG_avg.append(float(loss_rPPG.data))
-                loss_peak_avg.append(float(fre_loss.data))
-                loss_kl_avg_test.append(float(kl_loss.data))
-                loss_hr_mae.append(float(train_mae))
+                # loss_rPPG_avg.append(float(loss_rPPG.data))
+                # loss_peak_avg.append(float(fre_loss.data))
+                # loss_kl_avg_test.append(float(kl_loss.data))
+                # loss_hr_mae.append(float(train_mae))
+                loss_spo2_rmse.append(float(loss.data))
                 if idx % 100 == 99:  # print every 100 mini-batches
                     print(f'\nepoch:{epoch}, batch:{idx + 1}, total:{len(data_loader["train"]) // self.batch_size}, '
-                        f'lr:0.0001, sharp:{gra_sharp:.3f}, a:{a:.3f}, NegPearson:{np.mean(loss_rPPG_avg[-2000:]):.4f}, '
-                        f'\nb:{b:.3f}, kl:{np.mean(loss_kl_avg_test[-2000:]):.3f}, fre_CEloss:{np.mean(loss_peak_avg[-2000:]):.3f}, '
-                        f'hr_mae:{np.mean(loss_hr_mae[-2000:]):.3f}')
+                        f'lr:0.0001, sharp:{gra_sharp:.3f}, RMSE:{np.mean(loss_spo2_rmse):.4f}, ')
                     
             # Append the current learning rate to the list
             lrs.append(self.scheduler.get_last_lr())
             # Append the mean training loss for the epoch
-            mean_training_losses.append(np.mean(loss_rPPG_avg))
+            mean_training_losses.append(np.mean(loss_spo2_rmse))
             self.save_model(epoch)
             self.scheduler.step()
             self.model.eval()
@@ -188,16 +193,19 @@ class PhysFormerTrainer(BaseTrainer):
         print(" ====Validating===")
         self.optimizer.zero_grad()
         with torch.no_grad():
-            hrs = []
+            spo2_errors = []  # To store squared differences for RMSE calculation
             vbar = tqdm(data_loader["valid"], ncols=80)
+            
             for val_idx, val_batch in enumerate(vbar):
                 data, label = val_batch[0].float().to(self.device), val_batch[1].float().to(self.device)
+                
                 gra_sharp = 2.0
-                rPPG, _, _, _ = self.model(data, gra_sharp)
-                rPPG = (rPPG-torch.mean(rPPG, axis=-1).view(-1, 1))/torch.std(rPPG).view(-1, 1)
-                for _1, _2 in zip(rPPG, label):
-                    hrs.append((self.get_hr(_1.cpu().detach().numpy()), self.get_hr(_2.cpu().detach().numpy())))
-            RMSE = np.mean([(i-j)**2 for i, j in hrs])**0.5
+                rspo2, _, _, _ = self.model(data, gra_sharp)
+                
+                for predicted_spo2, actual_spo2 in zip(rspo2, label):
+                    spo2_errors.append((predicted_spo2.item() - actual_spo2.item()) ** 2)
+            
+            RMSE = np.sqrt(np.mean(spo2_errors))
         return RMSE
 
     def test(self, data_loader):
