@@ -143,6 +143,6 @@ class PURELoader(BaseLoader):
         """Reads a bvp signal file."""
         with open(bvp_file, "r") as f:
             labels = json.load(f)
-            waves = [label["Value"]["waveform"]
+            waves = [label["Value"]["o2saturation"]
                      for label in labels["/FullPackage"]]
         return np.asarray(waves)

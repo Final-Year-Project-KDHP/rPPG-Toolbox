@@ -249,9 +249,11 @@ class BaseLoader(Dataset):
         if config_preprocess.LABEL_TYPE == "Raw":
             pass
         elif config_preprocess.LABEL_TYPE == "DiffNormalized":
-            bvps = BaseLoader.diff_normalize_label(bvps)
+            # bvps = BaseLoader.diff_normalize_label(bvps)
+            pass
         elif config_preprocess.LABEL_TYPE == "Standardized":
-            bvps = BaseLoader.standardized_label(bvps)
+            # bvps = BaseLoader.standardized_label(bvps)
+            pass
         else:
             raise ValueError("Unsupported label type!")
 

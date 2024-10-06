@@ -80,7 +80,7 @@ def train_and_test(config, data_loader_dict):
     else:
         raise ValueError('Your Model is Not Supported  Yet!')
     model_trainer.train(data_loader_dict)
-    model_trainer.test(data_loader_dict)
+    # model_trainer.test(data_loader_dict)
 
 
 def test(config, data_loader_dict):
@@ -165,6 +165,7 @@ if __name__ == "__main__":
         # Create and initialize the train dataloader given the correct toolbox mode,
         # a supported dataset name, and a valid dataset paths
         if (config.TRAIN.DATA.DATASET and config.TRAIN.DATA.DATA_PATH):
+
 
             train_data_loader = train_loader(
                 name="train",
