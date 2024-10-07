@@ -105,6 +105,8 @@ class PhysFormerTrainer(BaseTrainer):
             for idx, batch in enumerate(tbar):
                 # hr = torch.tensor([self.get_hr(i) for i in batch[1]]).float().to(self.device)
                 data, label = batch[0].float().to(self.device), batch[1].float().to(self.device)
+                # print(label.shape)
+                # label = label.mean()
 
                 self.optimizer.zero_grad()
 
@@ -126,7 +128,13 @@ class PhysFormerTrainer(BaseTrainer):
                     #     self.frame_rate,
                     #     std=1.0
                     # )
-                    rmse_loss = rmse_loss + torch.sqrt(F.mse_loss(rspo2[bb], lable[bb]))
+                    # print("\n")
+                    # print(rspo2[bb].item())
+                    # print(label[bb].mean())
+                    rspo2_value = torch.tensor(rspo2[bb].item(), device=label[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
+                    label_value = label[bb].mean().float()
+                    rmse_loss = rmse_loss + torch.sqrt(F.mse_loss(rspo2_value, label_value))
+                    
                     # fre_loss = fre_loss+fre_loss_temp
                     # kl_loss = kl_loss+loss_distribution_kl
                     # train_mae = train_mae+train_mae_temp
