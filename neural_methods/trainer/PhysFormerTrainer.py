@@ -210,8 +210,13 @@ class PhysFormerTrainer(BaseTrainer):
                 gra_sharp = 2.0
                 rspo2, _, _, _ = self.model(data, gra_sharp)
                 
-                for predicted_spo2, actual_spo2 in zip(rspo2, label):
-                    spo2_errors.append((predicted_spo2.item() - actual_spo2.item()) ** 2)
+                # for predicted_spo2, actual_spo2 in zip(rspo2, label):
+                #     spo2_errors.append((predicted_spo2.item() - actual_spo2.item()) ** 2)
+
+                for bb in range(data.shape[0]):
+                    rspo2_value = torch.tensor(rspo2[bb].item(), device=label[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
+                    label_value = label[bb].mean().float()
+                    spo2_errors.append(torch.sqrt(F.mse_loss(rspo2_value, label_value)))
             
             RMSE = np.sqrt(np.mean(spo2_errors))
         return RMSE
