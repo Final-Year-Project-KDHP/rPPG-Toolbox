@@ -216,9 +216,11 @@ class PhysFormerTrainer(BaseTrainer):
                 for bb in range(data.shape[0]):
                     rspo2_value = torch.tensor(rspo2[bb].item(), device=label[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
                     label_value = label[bb].mean().float()
-                    spo2_errors.append(torch.sqrt(F.mse_loss(rspo2_value, label_value)))
+                    spo2_errors.append(F.mse_loss(rspo2_value, label_value))
+
+            spo2_errors_tensor = torch.stack(spo2_errors)  # Stack into a single tensor
+            RMSE = torch.sqrt(spo2_errors_tensor.mean())
             
-            RMSE = np.sqrt(np.mean(spo2_errors))
         return RMSE
 
     def test(self, data_loader):
