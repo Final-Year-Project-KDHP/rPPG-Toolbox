@@ -62,14 +62,21 @@ class PhysnetTrainer(BaseTrainer):
             tbar = tqdm(data_loader["train"], ncols=80)
             for idx, batch in enumerate(tbar):
                 tbar.set_description("Train epoch %s" % epoch)
-                rPPG, x_visual, x_visual3232, x_visual1616 = self.model(
+                rspo2, x_visual, x_visual3232, x_visual1616 = self.model(
                     batch[0].to(torch.float32).to(self.device))
                 BVP_label = batch[1].to(
                     torch.float32).to(self.device)
-                rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
-                BVP_label = (BVP_label - torch.mean(BVP_label)) / \
-                            torch.std(BVP_label)  # normalize
-                loss = self.loss_model(rPPG, BVP_label)
+                # rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
+                # BVP_label = (BVP_label - torch.mean(BVP_label)) / \
+                            # torch.std(BVP_label)  # normalize
+
+                rmse_loss = 0.0
+                for bb in range(data.shape[0]):
+                    rspo2_value = torch.tensor(rspo2[bb].item(), device=label[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
+                    label_value = label[bb].mean().float()
+                    rmse_loss = rmse_loss + torch.sqrt(F.mse_loss(rspo2_value, label_value))
+                rmse_loss /= data.shape[0]
+                loss = rmse_loss
                 loss.backward()
                 running_loss += loss.item()
                 if idx % 100 == 99:  # print every 100 mini-batches
@@ -124,17 +131,27 @@ class PhysnetTrainer(BaseTrainer):
                 vbar.set_description("Validation")
                 BVP_label = valid_batch[1].to(
                     torch.float32).to(self.device)
-                rPPG, x_visual, x_visual3232, x_visual1616 = self.model(
+                rspo2, x_visual, x_visual3232, x_visual1616 = self.model(
                     valid_batch[0].to(torch.float32).to(self.device))
-                rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
-                BVP_label = (BVP_label - torch.mean(BVP_label)) / \
-                            torch.std(BVP_label)  # normalize
-                loss_ecg = self.loss_model(rPPG, BVP_label)
-                valid_loss.append(loss_ecg.item())
+                # rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
+                # BVP_label = (BVP_label - torch.mean(BVP_label)) / \
+                #             torch.std(BVP_label)  # normalize
+
+                rmse_loss = 0.0
+                for bb in range(data.shape[0]):
+                    rspo2_value = torch.tensor(rspo2[bb].item(), device=label[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
+                    label_value = label[bb].mean().float()
+                    rmse_loss = rmse_loss + torch.sqrt(F.mse_loss(rspo2_value, label_value))
+                rmse_loss /= data.shape[0]
+                loss = rmse_loss
+                # loss_ecg = self.loss_model(rPPG, BVP_label)
+                valid_loss.append(rmse_loss.item())
                 valid_step += 1
                 vbar.set_postfix(loss=loss_ecg.item())
-            valid_loss = np.asarray(valid_loss)
-        return np.mean(valid_loss)
+            # valid_loss = np.asarray(valid_loss)
+            spo2_errors_tensor = torch.stack(valid_loss)  # Stack into a single tensor
+            RMSE = torch.sqrt(spo2_errors_tensor.mean())
+        return RMSE
 
     def test(self, data_loader):
         """ Runs the model on test sets."""
@@ -174,11 +191,11 @@ class PhysnetTrainer(BaseTrainer):
                 batch_size = test_batch[0].shape[0]
                 data, label = test_batch[0].to(
                     self.config.DEVICE), test_batch[1].to(self.config.DEVICE)
-                pred_ppg_test, _, _, _ = self.model(data)
+                rspo2, _, _, _ = self.model(data)
 
                 if self.config.TEST.OUTPUT_SAVE_DIR:
                     label = label.cpu()
-                    pred_ppg_test = pred_ppg_test.cpu()
+                    rspo2 = rspo2.cpu()
 
                 for idx in range(batch_size):
                     subj_index = test_batch[2][idx]
@@ -186,7 +203,8 @@ class PhysnetTrainer(BaseTrainer):
                     if subj_index not in predictions.keys():
                         predictions[subj_index] = dict()
                         labels[subj_index] = dict()
-                    predictions[subj_index][sort_index] = pred_ppg_test[idx]
+                    predictions[subj_index][sort_index] = rspo2[idx]
+                    print(predictions)
                     labels[subj_index][sort_index] = label[idx]
 
         print('')
