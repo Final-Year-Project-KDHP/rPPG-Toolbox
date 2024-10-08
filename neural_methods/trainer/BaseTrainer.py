@@ -54,6 +54,9 @@ class BaseTrainer:
         print('Saving outputs to:', output_path)
 
     def plot_losses_and_lrs(self, train_loss, valid_loss, lrs, config):
+        train_loss = [loss.cpu() if isinstance(loss, torch.Tensor) else loss for loss in train_loss]
+        valid_loss = [loss.cpu() if isinstance(loss, torch.Tensor) else loss for loss in valid_loss]
+        lrs = [lr.cpu() if isinstance(lr, torch.Tensor) else lr for lr in lrs]
 
         output_dir = os.path.join(config.LOG.PATH, config.TRAIN.DATA.EXP_DATA_NAME, 'plots')
         if not os.path.exists(output_dir):
