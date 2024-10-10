@@ -10,6 +10,7 @@ from neural_methods.loss.PhysNetNegPearsonLoss import Neg_Pearson
 from neural_methods.model.PhysNet import PhysNet_padding_Encoder_Decoder_MAX
 from neural_methods.trainer.BaseTrainer import BaseTrainer
 from torch.autograd import Variable
+import torch.nn.functional as F
 from tqdm import tqdm
 
 
@@ -62,10 +63,8 @@ class PhysnetTrainer(BaseTrainer):
             tbar = tqdm(data_loader["train"], ncols=80)
             for idx, batch in enumerate(tbar):
                 tbar.set_description("Train epoch %s" % epoch)
-                rspo2, x_visual, x_visual3232, x_visual1616 = self.model(
-                    batch[0].to(torch.float32).to(self.device))
-                BVP_label = batch[1].to(
-                    torch.float32).to(self.device)
+                data, label = batch[0].to(torch.float32).to(self.device), batch[1].to(torch.float32).to(self.device)
+                rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data)
                 # rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
                 # BVP_label = (BVP_label - torch.mean(BVP_label)) / \
                             # torch.std(BVP_label)  # normalize
@@ -129,10 +128,10 @@ class PhysnetTrainer(BaseTrainer):
             vbar = tqdm(data_loader["valid"], ncols=80)
             for valid_idx, valid_batch in enumerate(vbar):
                 vbar.set_description("Validation")
-                BVP_label = valid_batch[1].to(
-                    torch.float32).to(self.device)
-                rspo2, x_visual, x_visual3232, x_visual1616 = self.model(
-                    valid_batch[0].to(torch.float32).to(self.device))
+                data, label = valid_batch[0].to(torch.float32).to(self.device), valid_batch[1].to(torch.float32).to(self.device)
+                # BVP_label = valid_batch[1].to(
+                #     torch.float32).to(self.device)
+                rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data)
                 # rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
                 # BVP_label = (BVP_label - torch.mean(BVP_label)) / \
                 #             torch.std(BVP_label)  # normalize
@@ -141,13 +140,11 @@ class PhysnetTrainer(BaseTrainer):
                 for bb in range(data.shape[0]):
                     rspo2_value = torch.tensor(rspo2[bb].item(), device=label[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
                     label_value = label[bb].mean().float()
-                    rmse_loss = rmse_loss + torch.sqrt(F.mse_loss(rspo2_value, label_value))
-                rmse_loss /= data.shape[0]
-                loss = rmse_loss
+                    valid_loss.append(F.mse_loss(rspo2_value, label_value))
+                
                 # loss_ecg = self.loss_model(rPPG, BVP_label)
-                valid_loss.append(rmse_loss.item())
                 valid_step += 1
-                vbar.set_postfix(loss=loss_ecg.item())
+                # vbar.set_postfix(loss=rmse_loss.item())
             # valid_loss = np.asarray(valid_loss)
             spo2_errors_tensor = torch.stack(valid_loss)  # Stack into a single tensor
             RMSE = torch.sqrt(spo2_errors_tensor.mean())
