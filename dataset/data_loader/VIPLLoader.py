@@ -1,6 +1,6 @@
-"""The dataloader for UBFC-rPPG dataset.
+"""The dataloader for VIPL-HR dataset.
 
-Details for the UBFC-rPPG Dataset see https://sites.google.com/view/ybenezeth/ubfcrppg.
+Details for the VIPL-HR Dataset see https://sites.google.com/view/ybenezeth/ubfcrppg.
 If you use this dataset, please cite this paper:
 S. Bobbia, R. Macwan, Y. Benezeth, A. Mansouri, J. Dubois, "Unsupervised skin tissue segmentation for remote photoplethysmography", Pattern Recognition Letters, 2017.
 """
@@ -16,11 +16,11 @@ from dataset.data_loader.BaseLoader import BaseLoader
 from tqdm import tqdm
 
 
-class UBFCrPPGLoader(BaseLoader):
-    """The data loader for the UBFC-rPPG dataset."""
+class VIPLHRLoader(BaseLoader):
+    """The data loader for the VIPL-HR dataset."""
 
     def __init__(self, name, data_path, config_data):
-        """Initializes an UBFC-rPPG dataloader.
+        """Initializes an VIPL-HR dataloader.
             Args:
                 data_path(str): path of a folder which stores raw video and bvp data.
                 e.g. data_path should be "RawData" for below dataset structure:
@@ -42,7 +42,7 @@ class UBFCrPPGLoader(BaseLoader):
         super().__init__(name, data_path, config_data)
 
     def get_raw_data(self, data_path):
-        """Returns data directories under the path(For UBFC-rPPG dataset)."""
+        """Returns data directories under the path(For VIPL-HR dataset)."""
         data_dirs = glob.glob(data_path + "/" + "data" + "/" + "p*" + "/" + "v*" + "/" + "source[1-3]")
         if not data_dirs:
             raise ValueError(self.dataset_name + " data paths empty!")
