@@ -16,7 +16,7 @@ from dataset.data_loader.BaseLoader import BaseLoader
 from tqdm import tqdm
 
 
-class VIPLHRLoader(BaseLoader):
+class VIPLLoader(BaseLoader):
     """The data loader for the VIPL-HR dataset."""
 
     def __init__(self, name, data_path, config_data):
