@@ -81,7 +81,9 @@ class VIPLLoader(BaseLoader):
             raise ValueError(f'Unsupported DATA_AUG specified for {self.dataset_name} dataset! Received {config_preprocess.DATA_AUG}.')
 
         # Read Labels
+        num_frames = frames.shape[0]
         bvps = self.read_wave(os.path.join(data_dirs[i]['path'],"gt_SpO2.csv"))
+        bvps = self.resample_ppg(bvps, num_frames)
             
         frames_clips, bvps_clips = self.preprocess(frames, bvps, config_preprocess)
         input_name_list, label_name_list = self.save_multi_process(frames_clips, bvps_clips, saved_filename)
