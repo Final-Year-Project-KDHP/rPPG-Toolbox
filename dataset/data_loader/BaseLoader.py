@@ -412,6 +412,8 @@ class BaseLoader(Dataset):
         """
 
         clip_num = frames.shape[0] // chunk_length
+        bvps_clips = []
+        frames_clips = []
         # frames_clips = [frames[i * chunk_length:(i + 1) * chunk_length] for i in range(clip_num)]
         # bvps_clips = [bvps[i * chunk_length:(i + 1) * chunk_length] for i in range(clip_num)]
         for i in range(clip_num):
