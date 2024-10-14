@@ -183,6 +183,7 @@ class PhysnetTrainer(BaseTrainer):
         self.model = self.model.to(self.config.DEVICE)
         self.model.eval()
         print("Running model evaluation on the testing dataset!")
+        test_loss = []
         with torch.no_grad():
             for _, test_batch in enumerate(tqdm(data_loader["test"], ncols=80)):
                 batch_size = test_batch[0].shape[0]
@@ -201,11 +202,16 @@ class PhysnetTrainer(BaseTrainer):
                         predictions[subj_index] = dict()
                         labels[subj_index] = dict()
                     predictions[subj_index][sort_index] = rspo2[idx]
-                    print(predictions)
+                    rspo2_value = torch.tensor(rspo2[idx].item(), device=label[idx].device) if not isinstance(rspo2[idx], torch.Tensor) else rspo2[idx]
+                    label_value = label[idx].mean().float()
+                    test_loss.append(F.mse_loss(rspo2_value, label_value))
                     labels[subj_index][sort_index] = label[idx]
 
         print('')
-        calculate_metrics(predictions, labels, self.config)
+        spo2_errors_tensor = torch.stack(test_loss)  # Stack into a single tensor
+        RMSE = torch.sqrt(spo2_errors_tensor.mean())
+        print("RMSE:", RMSE)
+        # calculate_metrics(predictions, labels, self.config)
         if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs 
             self.save_test_outputs(predictions, labels, self.config)
 
