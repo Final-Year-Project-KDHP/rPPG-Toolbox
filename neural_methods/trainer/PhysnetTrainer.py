@@ -54,6 +54,11 @@ class PhysnetTrainer(BaseTrainer):
         mean_training_losses = []
         mean_valid_losses = []
         lrs = []
+        if self.config.TRAIN.CONTINUE_TRAIN:
+            checkpoint = torch.load(self.config.INFERENCE.MODEL_PATH)
+            self.model.load_state_dict(checkpoint['model_state_dict'])
+            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            self.model = self.model.to(self.config.DEVICE)
         for epoch in range(self.max_epoch_num):
             print('')
             print(f"====Training Epoch: {epoch}====")
