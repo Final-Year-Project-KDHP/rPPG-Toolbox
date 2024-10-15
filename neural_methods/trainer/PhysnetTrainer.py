@@ -163,7 +163,7 @@ class PhysnetTrainer(BaseTrainer):
         if self.config.TOOLBOX_MODE == "only_test":
             if not os.path.exists(self.config.INFERENCE.MODEL_PATH):
                 raise ValueError("Inference model path error! Please check INFERENCE.MODEL_PATH in your yaml.")
-            self.model.load_state_dict(torch.load(self.config.INFERENCE.MODEL_PATH))
+            self.model.load_state_dict(torch.load(self.config.INFERENCE.MODEL_PATH)["model_state_dict"])
             print("Testing uses pretrained model!")
             print(self.config.INFERENCE.MODEL_PATH)
         else:
@@ -172,13 +172,13 @@ class PhysnetTrainer(BaseTrainer):
                 self.model_dir, self.model_file_name + '_Epoch' + str(self.max_epoch_num - 1) + '.pth')
                 print("Testing uses last epoch as non-pretrained model!")
                 print(last_epoch_model_path)
-                self.model.load_state_dict(torch.load(last_epoch_model_path))
+                self.model.load_state_dict(torch.load(last_epoch_model_path)["model_state_dict"])
             else:
                 best_model_path = os.path.join(
                     self.model_dir, self.model_file_name + '_Epoch' + str(self.best_epoch) + '.pth')
                 print("Testing uses best epoch selected using model selection as non-pretrained model!")
                 print(best_model_path)
-                self.model.load_state_dict(torch.load(best_model_path))
+                self.model.load_state_dict(torch.load(best_model_path)["model_state_dict"])
 
         self.model = self.model.to(self.config.DEVICE)
         self.model.eval()
@@ -220,5 +220,6 @@ class PhysnetTrainer(BaseTrainer):
             os.makedirs(self.model_dir)
         model_path = os.path.join(
             self.model_dir, self.model_file_name + '_Epoch' + str(index) + '.pth')
-        torch.save(self.model.state_dict(), model_path)
+        torch.save({"model_state_dict":self.model.state_dict(),
+                    "optimizer_state_dict":self.optimizer.state_dict()}, model_path)
         print('Saved Model Path: ', model_path)
