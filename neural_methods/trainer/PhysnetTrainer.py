@@ -55,6 +55,7 @@ class PhysnetTrainer(BaseTrainer):
         mean_valid_losses = []
         lrs = []
         if self.config.TRAIN.CONTINUE_TRAIN:
+            print("Loading checkpoint")
             checkpoint = torch.load(self.config.INFERENCE.MODEL_PATH)
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
