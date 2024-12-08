@@ -3,18 +3,22 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class CustomCrossEntropyWithSelectivePenalty(nn.Module):
-    def __init__(self, alpha=0.5, class_mapping=None):
+    def __init__(self, alpha=0.5):
         """
-        Custom loss function combining CrossEntropyLoss and a distance-based penalty, 
+        Custom loss function combining CrossEntropyLoss and a distance-based penalty,
         with specific cases excluded from penalties.
         :param alpha: Weight for the penalty term (between 0 and 1).
-        :param class_mapping: List of class values corresponding to the class indices 
-                              (e.g., [90, 91, ..., 100, "below 90", "above 100"]).
         """
         super(CustomCrossEntropyWithSelectivePenalty, self).__init__()
         self.cross_entropy = nn.CrossEntropyLoss()
         self.alpha = alpha
-        self.class_mapping = class_mapping if class_mapping else list(range(90, 101)) + ["below 90", "above 100"]
+
+        # Updated class mapping: [below 90, 90, ..., 100, above 100]
+        self.class_mapping = ["below 90"] + list(range(90, 101)) + ["above 100"]
+
+        # Indices for special ranges
+        self.below_90_index = 0
+        self.above_100_index = len(self.class_mapping) - 1
 
     def forward(self, logits, targets):
         """
@@ -23,7 +27,7 @@ class CustomCrossEntropyWithSelectivePenalty(nn.Module):
         :param targets: Ground truth class indices of shape [batch_size].
         :return: Combined loss value.
         """
-        # CrossEntropyLoss
+        # Compute CrossEntropyLoss
         ce_loss = self.cross_entropy(logits, targets)
 
         # Compute softmax probabilities
@@ -45,14 +49,15 @@ class CustomCrossEntropyWithSelectivePenalty(nn.Module):
                 # 1. Correct predictions
                 # 2. Both predicted and true classes in "below 90" or "above 100" range
                 if pred_class == true_class or (
-                    (true_value == "below 90" and pred_value == "below 90") or
-                    (true_value == "above 100" and pred_value == "above 100")
+                    (true_class == self.below_90_index and pred_class == self.below_90_index) or
+                    (true_class == self.above_100_index and pred_class == self.above_100_index)
                 ):
                     continue
 
-                # Compute distance penalty (absolute difference between predicted and true SpO2 values)
-                distance = abs(true_value - pred_value) if isinstance(true_value, int) and isinstance(pred_value, int) else 0
-                penalty += prob * distance
+                # Compute distance penalty for numeric classes only
+                if isinstance(true_value, int) and isinstance(pred_value, int):
+                    distance = abs(true_value - pred_value)  # Absolute difference between true and predicted values
+                    penalty += prob * distance
 
         penalty = penalty / batch_size  # Average penalty over the batch
 
