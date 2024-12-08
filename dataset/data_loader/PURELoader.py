@@ -138,11 +138,26 @@ class PURELoader(BaseLoader):
             frames.append(img)
         return np.asarray(frames)
 
+    def map_to_class(self, value):
+        """Maps SpO2 values to class indices."""
+        if value < 90:
+            return 0
+        elif value > 100:
+            return 12
+        else:
+            return int(value)-89
+
     @staticmethod
-    def read_wave(bvp_file):
-        """Reads a bvp signal file."""
+    def read_wave(self, bvp_file):
+        """Reads a bvp signal file and maps SpO2 values to class indices."""
         with open(bvp_file, "r") as f:
             labels = json.load(f)
-            waves = [label["Value"]["o2saturation"]
-                     for label in labels["/FullPackage"]]
+            # Call map_to_class using self
+            waves = [
+                self.map_to_class(label["Value"]["o2saturation"])
+                for label in labels["/FullPackage"]
+            ]
         return np.asarray(waves)
+
+
+
