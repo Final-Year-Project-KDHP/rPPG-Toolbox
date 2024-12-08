@@ -7,6 +7,7 @@ import torch
 import torch.optim as optim
 from evaluation.metrics import calculate_metrics
 from neural_methods.loss.PhysNetNegPearsonLoss import Neg_Pearson
+from neural_methods.loss.CustomCrossEntropyLoss import CustomCrossEntropyWithSelectivePenalty
 from neural_methods.model.PhysNet import PhysNet_padding_Encoder_Decoder_MAX
 from neural_methods.trainer.BaseTrainer import BaseTrainer
 from torch.autograd import Variable
@@ -36,6 +37,7 @@ class PhysnetTrainer(BaseTrainer):
         if config.TOOLBOX_MODE == "train_and_test":
             self.num_train_batches = len(data_loader["train"])
             self.loss_model = Neg_Pearson()
+            self.ce_penalty_loss_fn = CustomCrossEntropyWithSelectivePenalty(alpha=0.5)
             self.optimizer = optim.Adam(
                 self.model.parameters(), lr=config.TRAIN.LR)
             # See more details on the OneCycleLR scheduler here: https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.OneCycleLR.html
@@ -45,23 +47,45 @@ class PhysnetTrainer(BaseTrainer):
             pass
         else:
             raise ValueError("PhysNet trainer initialized in incorrect toolbox mode!")
+        
+    def combined_loss(logits, labels, rspo2, alpha=0.7, beta=0.3):
+        """
+        Combined loss function with CustomCrossEntropyWithSelectivePenalty and Negative Pearson.
+        :param logits: Model output logits for classification.
+        :param labels: Ground truth class indices.
+        :param rspo2: Predicted values for trend consistency.
+        :param alpha: Weight for the classification loss with selective penalty.
+        :param beta: Weight for Negative Pearson correlation loss.
+        :return: Combined loss value.
+        """
+        # Custom cross-entropy with selective penalty
+        ce_penalty_loss = CustomCrossEntropyWithSelectivePenalty(alpha=0.5)(logits, labels)
+    
+        # Negative Pearson correlation loss
+        neg_pearson_loss = Neg_Pearson()(rspo2, labels)
+
+        # Combined loss
+        total_loss = alpha * ce_penalty_loss + beta * neg_pearson_loss
+        return total_loss
+
 
     def train(self, data_loader):
-        """Training routine for model"""
+        """Training routine for the model."""
         if data_loader["train"] is None:
             raise ValueError("No data for train")
 
         mean_training_losses = []
         mean_valid_losses = []
         lrs = []
+
         if self.config.TRAIN.CONTINUE_TRAIN:
             print("Loading checkpoint")
             checkpoint = torch.load(self.config.INFERENCE.MODEL_PATH)
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             self.model = self.model.to(self.config.DEVICE)
+
         for epoch in range(self.max_epoch_num):
-            print('')
             print(f"====Training Epoch: {epoch}====")
             running_loss = 0.0
             train_loss = []
@@ -69,95 +93,83 @@ class PhysnetTrainer(BaseTrainer):
             tbar = tqdm(data_loader["train"], ncols=80)
             for idx, batch in enumerate(tbar):
                 tbar.set_description("Train epoch %s" % epoch)
-                data, label = batch[0].to(torch.float32).to(self.device), batch[1].to(torch.float32).to(self.device)
-                rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data)
-                # rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
-                # BVP_label = (BVP_label - torch.mean(BVP_label)) / \
-                            # torch.std(BVP_label)  # normalize
 
-                rmse_loss = 0.0
-                for bb in range(data.shape[0]):
-                    rspo2_value = torch.tensor(rspo2[bb].item(), device=label[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
-                    label_value = label[bb].mean().float()
-                    rmse_loss = rmse_loss + torch.sqrt(F.mse_loss(rspo2_value, label_value))
-                rmse_loss /= data.shape[0]
-                loss = rmse_loss
+                # Load data and labels
+                data, labels = batch[0].to(torch.float32).to(self.device), batch[1].to(self.device)
+
+                # Forward pass
+                logits, rspo2, _, _, _ = self.model(data)
+
+                # Compute combined loss
+                loss = self.combined_loss(logits=logits, labels=labels, rspo2=rspo2, alpha=0.7, beta=0.3)
+
+                # Backward pass and optimization
                 loss.backward()
-                running_loss += loss.item()
-                if idx % 100 == 99:  # print every 100 mini-batches
-                    print(
-                        f'[{epoch}, {idx + 1:5d}] loss: {running_loss / 100:.3f}')
-                    running_loss = 0.0
-                train_loss.append(loss.item())
-
-                # Append the current learning rate to the list
-                lrs.append(self.scheduler.get_last_lr())
-
                 self.optimizer.step()
                 self.scheduler.step()
                 self.optimizer.zero_grad()
+
+                # Update running loss
+                running_loss += loss.item()
+                train_loss.append(loss.item())
+
+                # Logging
+                if idx % 100 == 99:  # Print every 100 mini-batches
+                    print(f"[{epoch}, {idx + 1:5d}] loss: {running_loss / 100:.3f}")
+                    running_loss = 0.0
+
                 tbar.set_postfix(loss=loss.item())
 
-            # Append the mean training loss for the epoch
             mean_training_losses.append(np.mean(train_loss))
 
+            # Save model and validate
             self.save_model(epoch)
             if not self.config.TEST.USE_LAST_EPOCH: 
                 valid_loss = self.valid(data_loader)
                 mean_valid_losses.append(valid_loss)
-                print('validation loss: ', valid_loss)
-                if self.min_valid_loss is None:
+                print("Validation loss: ", valid_loss)
+                if self.min_valid_loss is None or valid_loss < self.min_valid_loss:
                     self.min_valid_loss = valid_loss
                     self.best_epoch = epoch
-                    print("Update best model! Best epoch: {}".format(self.best_epoch))
-                elif (valid_loss < self.min_valid_loss):
-                    self.min_valid_loss = valid_loss
-                    self.best_epoch = epoch
-                    print("Update best model! Best epoch: {}".format(self.best_epoch))
-        if not self.config.TEST.USE_LAST_EPOCH: 
-            print("best trained epoch: {}, min_val_loss: {}".format(
-                self.best_epoch, self.min_valid_loss))
+                    print(f"Update best model! Best epoch: {self.best_epoch}")
+
+        # Plot losses and learning rates
         if self.config.TRAIN.PLOT_LOSSES_AND_LR:
             self.plot_losses_and_lrs(mean_training_losses, mean_valid_losses, lrs, self.config)
 
-    def valid(self, data_loader):
-        """ Runs the model on valid sets."""
-        if data_loader["valid"] is None:
-            raise ValueError("No data for valid")
 
-        print('')
-        print(" ====Validing===")
+    def valid(self, data_loader):
+        """Runs the model on validation sets."""
+        if data_loader["valid"] is None:
+            raise ValueError("No data for validation")
+
+        print("====Validating===")
         valid_loss = []
         self.model.eval()
-        valid_step = 0
+
         with torch.no_grad():
             vbar = tqdm(data_loader["valid"], ncols=80)
             for valid_idx, valid_batch in enumerate(vbar):
                 vbar.set_description("Validation")
-                data, label = valid_batch[0].to(torch.float32).to(self.device), valid_batch[1].to(torch.float32).to(self.device)
-                # BVP_label = valid_batch[1].to(
-                #     torch.float32).to(self.device)
-                rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data)
-                # rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
-                # BVP_label = (BVP_label - torch.mean(BVP_label)) / \
-                #             torch.std(BVP_label)  # normalize
 
-                rmse_loss = 0.0
-                for bb in range(data.shape[0]):
-                    rspo2_value = torch.tensor(rspo2[bb].item(), device=label[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
-                    label_value = label[bb].mean().float()
-                    valid_loss.append(F.mse_loss(rspo2_value, label_value))
-                
-                # loss_ecg = self.loss_model(rPPG, BVP_label)
-                valid_step += 1
-                # vbar.set_postfix(loss=rmse_loss.item())
-            # valid_loss = np.asarray(valid_loss)
-            spo2_errors_tensor = torch.stack(valid_loss)  # Stack into a single tensor
-            RMSE = torch.sqrt(spo2_errors_tensor.mean())
-        return RMSE
+                # Load data and labels
+                data, labels = valid_batch[0].to(torch.float32).to(self.device), valid_batch[1].to(self.device)
+
+                # Forward pass
+                logits, rspo2, _, _, _ = self.model(data)
+
+                # Compute combined loss
+                loss = self.combined_loss(logits=logits, labels=labels, rspo2=rspo2, alpha=0.7, beta=0.3)
+
+                valid_loss.append(loss.item())
+
+            # Compute mean validation loss
+            mean_valid_loss = np.mean(valid_loss)
+            return mean_valid_loss
+
 
     def test(self, data_loader):
-        """ Runs the model on test sets."""
+        """Runs the model on test sets using CrossEntropyLoss."""
         if data_loader["test"] is None:
             raise ValueError("No data for test")
         
@@ -166,6 +178,7 @@ class PhysnetTrainer(BaseTrainer):
         predictions = dict()
         labels = dict()
 
+        # Load the appropriate model checkpoint
         if self.config.TOOLBOX_MODE == "only_test":
             if not os.path.exists(self.config.INFERENCE.MODEL_PATH):
                 raise ValueError("Inference model path error! Please check INFERENCE.MODEL_PATH in your yaml.")
@@ -175,7 +188,7 @@ class PhysnetTrainer(BaseTrainer):
         else:
             if self.config.TEST.USE_LAST_EPOCH:
                 last_epoch_model_path = os.path.join(
-                self.model_dir, self.model_file_name + '_Epoch' + str(self.max_epoch_num - 1) + '.pth')
+                    self.model_dir, self.model_file_name + '_Epoch' + str(self.max_epoch_num - 1) + '.pth')
                 print("Testing uses last epoch as non-pretrained model!")
                 print(last_epoch_model_path)
                 self.model.load_state_dict(torch.load(last_epoch_model_path)["model_state_dict"])
@@ -189,37 +202,46 @@ class PhysnetTrainer(BaseTrainer):
         self.model = self.model.to(self.config.DEVICE)
         self.model.eval()
         print("Running model evaluation on the testing dataset!")
-        test_loss = []
+        test_losses = []
+
+        cross_entropy_loss_fn = torch.nn.CrossEntropyLoss()
+
         with torch.no_grad():
             for _, test_batch in enumerate(tqdm(data_loader["test"], ncols=80)):
-                batch_size = test_batch[0].shape[0]
-                data, label = test_batch[0].to(
-                    self.config.DEVICE), test_batch[1].to(self.config.DEVICE)
-                rspo2, _, _, _ = self.model(data)
+                # Load test data and labels
+                data, labels = test_batch[0].to(self.config.DEVICE), test_batch[1].to(self.config.DEVICE)
 
+                # Forward pass: Get model predictions
+                logits, rspo2, _, _, _ = self.model(data)
+
+                # Compute CrossEntropyLoss
+                loss = cross_entropy_loss_fn(logits, labels)
+                test_losses.append(loss.item())
+
+                # Save predictions and labels for analysis
                 if self.config.TEST.OUTPUT_SAVE_DIR:
-                    label = label.cpu()
-                    rspo2 = rspo2.cpu()
+                    labels = labels.cpu()
+                    logits = logits.cpu()
 
-                for idx in range(batch_size):
+                for idx in range(data.shape[0]):
                     subj_index = test_batch[2][idx]
                     sort_index = int(test_batch[3][idx])
                     if subj_index not in predictions.keys():
                         predictions[subj_index] = dict()
                         labels[subj_index] = dict()
-                    predictions[subj_index][sort_index] = rspo2[idx]
-                    rspo2_value = torch.tensor(rspo2[idx].item(), device=label[idx].device) if not isinstance(rspo2[idx], torch.Tensor) else rspo2[idx]
-                    label_value = label[idx].mean().float()
-                    test_loss.append(F.mse_loss(rspo2_value, label_value))
-                    labels[subj_index][sort_index] = label[idx]
+                    predictions[subj_index][sort_index] = logits[idx]
+                    labels[subj_index][sort_index] = labels[idx]
 
-        print('')
-        spo2_errors_tensor = torch.stack(test_loss)  # Stack into a single tensor
-        RMSE = torch.sqrt(spo2_errors_tensor.mean())
-        print("RMSE:", RMSE)
-        # calculate_metrics(predictions, labels, self.config)
-        if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs 
+        # Compute average test loss
+        mean_test_loss = np.mean(test_losses)
+        print(f"Mean Test Loss (CrossEntropy): {mean_test_loss:.4f}")
+
+        # Save test outputs if configured
+        if self.config.TEST.OUTPUT_SAVE_DIR:
             self.save_test_outputs(predictions, labels, self.config)
+
+        return mean_test_loss
+
 
     def save_model(self, index):
         if not os.path.exists(self.model_dir):
