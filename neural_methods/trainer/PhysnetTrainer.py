@@ -36,7 +36,7 @@ class PhysnetTrainer(BaseTrainer):
 
         if config.TOOLBOX_MODE == "train_and_test":
             self.num_train_batches = len(data_loader["train"])
-            self.loss_model = Neg_Pearson()
+            #self.loss_model = Neg_Pearson()
             self.ce_penalty_loss_fn = CustomCrossEntropyWithSelectivePenalty(alpha=0.5)
             self.optimizer = optim.Adam(
                 self.model.parameters(), lr=config.TRAIN.LR)
@@ -101,7 +101,7 @@ class PhysnetTrainer(BaseTrainer):
                 logits, rspo2, _, _, _ = self.model(data)
 
                 # Compute combined loss
-                loss = self.combined_loss(logits=logits, labels=labels, rspo2=rspo2, alpha=0.7, beta=0.3)
+                loss = self.ce_penalty_loss_fn(logits, labels)
 
                 # Backward pass and optimization
                 loss.backward()
@@ -159,7 +159,7 @@ class PhysnetTrainer(BaseTrainer):
                 logits, rspo2, _, _, _ = self.model(data)
 
                 # Compute combined loss
-                loss = self.combined_loss(logits=logits, labels=labels, rspo2=rspo2, alpha=0.7, beta=0.3)
+                loss = self.ce_penalty_loss_fn(logits, labels)
 
                 valid_loss.append(loss.item())
 
