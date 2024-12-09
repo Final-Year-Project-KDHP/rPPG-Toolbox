@@ -118,6 +118,7 @@ class PURELoader(BaseLoader):
         if config_preprocess.USE_PSUEDO_PPG_LABEL:
             bvps = self.generate_pos_psuedo_labels(frames, fs=self.config_data.FS)
         else:
+            print("Reading BVP file: ", os.path.join(data_dirs[i]['path'], "{0}.json".format(filename)))
             bvps = self.read_wave(
                 os.path.join(data_dirs[i]['path'], "{0}.json".format(filename)))
 
