@@ -48,27 +48,7 @@ class PhysnetTrainer(BaseTrainer):
         else:
             raise ValueError("PhysNet trainer initialized in incorrect toolbox mode!")
         
-    def combined_loss(logits, labels, rspo2, alpha=0.7, beta=0.3):
-        """
-        Combined loss function with CustomCrossEntropyWithSelectivePenalty and Negative Pearson.
-        :param logits: Model output logits for classification.
-        :param labels: Ground truth class indices.
-        :param rspo2: Predicted values for trend consistency.
-        :param alpha: Weight for the classification loss with selective penalty.
-        :param beta: Weight for Negative Pearson correlation loss.
-        :return: Combined loss value.
-        """
-        # Custom cross-entropy with selective penalty
-        ce_penalty_loss = CustomCrossEntropyWithSelectivePenalty(alpha=0.5)(logits, labels)
     
-        # Negative Pearson correlation loss
-        neg_pearson_loss = Neg_Pearson()(rspo2, labels)
-
-        # Combined loss
-        total_loss = alpha * ce_penalty_loss + beta * neg_pearson_loss
-        return total_loss
-
-
     def train(self, data_loader):
         """Training routine for the model."""
         if data_loader["train"] is None:
@@ -100,25 +80,37 @@ class PhysnetTrainer(BaseTrainer):
                 # Forward pass
                 logits, rspo2, _, _, _ = self.model(data)
 
-                # Compute combined loss
-                loss = self.ce_penalty_loss_fn(logits, labels)
+                # Initialize loss for the batch
+                batch_loss = 0.0
+
+                # Compute loss for each sample in the batch
+                for bb in range(data.shape[0]):
+                    rspo2_value = torch.tensor(rspo2[bb].item(), device=labels[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
+                    label_value = labels[bb].mean().float()
+                    #map label to class
+                    label_value = self.map_to_class(label_value.item())
+                    sample_loss = self.ce_penalty_loss_fn(rspo2_value, label_value)
+                    batch_loss += sample_loss
+
+                # Average loss across the batch
+                batch_loss /= data.shape[0]
 
                 # Backward pass and optimization
-                loss.backward()
+                batch_loss.backward()
                 self.optimizer.step()
                 self.scheduler.step()
                 self.optimizer.zero_grad()
 
                 # Update running loss
-                running_loss += loss.item()
-                train_loss.append(loss.item())
+                running_loss += batch_loss.item()
+                train_loss.append(batch_loss.item())
 
                 # Logging
                 if idx % 100 == 99:  # Print every 100 mini-batches
                     print(f"[{epoch}, {idx + 1:5d}] loss: {running_loss / 100:.3f}")
                     running_loss = 0.0
 
-                tbar.set_postfix(loss=loss.item())
+                tbar.set_postfix(loss=batch_loss.item())
 
             mean_training_losses.append(np.mean(train_loss))
 
@@ -136,6 +128,7 @@ class PhysnetTrainer(BaseTrainer):
         # Plot losses and learning rates
         if self.config.TRAIN.PLOT_LOSSES_AND_LR:
             self.plot_losses_and_lrs(mean_training_losses, mean_valid_losses, lrs, self.config)
+
 
 
     def valid(self, data_loader):
@@ -158,14 +151,22 @@ class PhysnetTrainer(BaseTrainer):
                 # Forward pass
                 logits, rspo2, _, _, _ = self.model(data)
 
-                # Compute combined loss
-                loss = self.ce_penalty_loss_fn(logits, labels)
+                # Compute loss for each sample in the batch
+                batch_loss = 0.0
+                for bb in range(data.shape[0]):
+                    rspo2_value = torch.tensor(rspo2[bb].item(), device=labels[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
+                    label_value = labels[bb].mean().float()
+                    label_value = self.map_to_class(label_value.item())
+                    sample_loss = self.ce_penalty_loss_fn(rspo2_value, label_value)
+                    batch_loss += sample_loss.item()
 
-                valid_loss.append(loss.item())
+                # Append the mean loss for the batch
+                valid_loss.append(batch_loss / data.shape[0])
 
             # Compute mean validation loss
             mean_valid_loss = np.mean(valid_loss)
             return mean_valid_loss
+
 
 
     def test(self, data_loader):
@@ -208,29 +209,27 @@ class PhysnetTrainer(BaseTrainer):
 
         with torch.no_grad():
             for _, test_batch in enumerate(tqdm(data_loader["test"], ncols=80)):
-                # Load test data and labels
-                data, labels = test_batch[0].to(self.config.DEVICE), test_batch[1].to(self.config.DEVICE)
+                batch_size = test_batch[0].shape[0]
+                data, label = test_batch[0].to(
+                    self.config.DEVICE), test_batch[1].to(self.config.DEVICE)
+                rspo2, _, _, _ = self.model(data)
 
-                # Forward pass: Get model predictions
-                logits, rspo2, _, _, _ = self.model(data)
-
-                # Compute CrossEntropyLoss
-                loss = cross_entropy_loss_fn(logits, labels)
-                test_losses.append(loss.item())
-
-                # Save predictions and labels for analysis
                 if self.config.TEST.OUTPUT_SAVE_DIR:
-                    labels = labels.cpu()
-                    logits = logits.cpu()
+                    label = label.cpu()
+                    rspo2 = rspo2.cpu()
 
-                for idx in range(data.shape[0]):
+                for idx in range(batch_size):
                     subj_index = test_batch[2][idx]
                     sort_index = int(test_batch[3][idx])
                     if subj_index not in predictions.keys():
                         predictions[subj_index] = dict()
                         labels[subj_index] = dict()
-                    predictions[subj_index][sort_index] = logits[idx]
-                    labels[subj_index][sort_index] = labels[idx]
+                    predictions[subj_index][sort_index] = rspo2[idx]
+                    rspo2_value = torch.tensor(rspo2[idx].item(), device=label[idx].device) if not isinstance(rspo2[idx], torch.Tensor) else rspo2[idx]
+                    label_value = label[idx].mean().float()
+                    label_value = self.map_to_class(label_value.item())
+                    test_losses.append(cross_entropy_loss_fn(rspo2_value, label_value))
+                    labels[subj_index][sort_index] = label[idx]
 
         # Compute average test loss
         mean_test_loss = np.mean(test_losses)
@@ -251,3 +250,12 @@ class PhysnetTrainer(BaseTrainer):
         torch.save({"model_state_dict":self.model.state_dict(),
                     "optimizer_state_dict":self.optimizer.state_dict()}, model_path)
         print('Saved Model Path: ', model_path)
+    
+    def map_to_class(self, value):
+        """Maps SpO2 values to class indices."""
+        if value < 90:
+            return 0
+        elif value > 100:
+            return 12
+        else:
+            return int(value)-89

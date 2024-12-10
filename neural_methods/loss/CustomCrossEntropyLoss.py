@@ -57,7 +57,9 @@ class CustomCrossEntropyWithSelectivePenalty(nn.Module):
                 # Compute distance penalty for numeric classes only
                 if isinstance(true_value, int) and isinstance(pred_value, int):
                     distance = abs(true_value - pred_value)  # Absolute difference between true and predicted values
-                    penalty += prob * distance
+                    # penalty += prob * distance
+                    alpha=0.1
+                    penalty += alpha * distance
 
         penalty = penalty / batch_size  # Average penalty over the batch
 
