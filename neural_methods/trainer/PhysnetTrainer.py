@@ -78,7 +78,7 @@ class PhysnetTrainer(BaseTrainer):
                 data, labels = batch[0].to(torch.float32).to(self.device), batch[1].to(self.device)
 
                 # Forward pass
-                logits, rspo2, _, _, _ = self.model(data)
+                logits, rspo2, _, _ = self.model(data)
 
                 # Initialize loss for the batch
                 batch_loss = 0.0
@@ -149,7 +149,7 @@ class PhysnetTrainer(BaseTrainer):
                 data, labels = valid_batch[0].to(torch.float32).to(self.device), valid_batch[1].to(self.device)
 
                 # Forward pass
-                logits, rspo2, _, _, _ = self.model(data)
+                logits, rspo2, _, _= self.model(data)
 
                 # Compute loss for each sample in the batch
                 batch_loss = 0.0
