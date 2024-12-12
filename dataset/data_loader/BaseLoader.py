@@ -60,6 +60,8 @@ class BaseLoader(Dataset):
         self.do_preprocess = config_data.DO_PREPROCESS
         self.config_data = config_data
 
+        self.vid_idx = config_data.VID_IDX
+
         assert (config_data.BEGIN < config_data.END)
         assert (config_data.BEGIN > 0 or config_data.BEGIN == 0)
         assert (config_data.END < 1 or config_data.END == 1)
@@ -580,6 +582,18 @@ class BaseLoader(Dataset):
         os.makedirs(os.path.dirname(self.file_list_path), exist_ok=True)
         file_list_df.to_csv(self.file_list_path)  # save file list to .csv
 
+    def filter_the_data(vid_idx, inputs):
+        sub_idxes = []
+        for in_vid in inputs:
+            filename = os.path.basename(in_vid)
+            sub_idx = int(filename.split("_")[0])
+            if sub_idx not in sub_idxes:
+                sub_idxes.append(sub_idx)
+        sub_idxes = sorted(sub_idxes)
+        req_sub_idx = sub_idxes[vid_idx]
+        inputs = [x for x in inputs if int(os.path.basename(x).split("_")[0]) == req_sub_idx]
+        return inputs
+
     def load_preprocessed_data(self):
         """ Loads the preprocessed data listed in the file list.
 
@@ -594,6 +608,7 @@ class BaseLoader(Dataset):
         if not inputs:
             raise ValueError(self.dataset_name + ' dataset loading data error!')
         inputs = sorted(inputs)  # sort input file name list
+        inputs = self.filter_the_data(self.vid_idx, inputs)
         labels = [input_file.replace("input", "label") for input_file in inputs]
         self.inputs = inputs
         self.labels = labels

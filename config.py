@@ -11,6 +11,8 @@ from yacs.config import CfgNode as CN
 
 _C = CN()
 
+# video index
+_C.VID_IDX = 0
 # Base config files
 _C.BASE = ['']
 # -----------------------------------------------------------------------------
