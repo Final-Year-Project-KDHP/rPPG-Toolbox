@@ -28,7 +28,7 @@ class CustomCrossEntropyWithSelectivePenalty(nn.Module):
         :return: Combined loss value for the sample.
         """
         # Compute CrossEntropyLoss for the single sample
-        ce_loss = self.cross_entropy(logits.unsqueeze(0), target.unsqueeze(0))
+        ce_loss = self.cross_entropy(logits, target)
 
         # Compute softmax probabilities
         probs = F.softmax(logits, dim=0)
