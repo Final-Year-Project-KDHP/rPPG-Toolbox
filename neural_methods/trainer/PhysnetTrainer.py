@@ -89,7 +89,8 @@ class PhysnetTrainer(BaseTrainer):
                     label_value = labels[bb].mean().float()
                     #map label to class
                     label_value = self.map_to_class(label_value.item())
-                    sample_loss = self.ce_penalty_loss_fn(rspo2_value, label_value)
+                    label_tensor = torch.tensor(label_value, dtype=torch.long, device=labels[bb].device)
+                    sample_loss = self.ce_penalty_loss_fn(rspo2_value, label_tensor)
                     batch_loss += sample_loss
 
                 # Average loss across the batch
@@ -157,7 +158,8 @@ class PhysnetTrainer(BaseTrainer):
                     rspo2_value = torch.tensor(rspo2[bb].item(), device=labels[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
                     label_value = labels[bb].mean().float()
                     label_value = self.map_to_class(label_value.item())
-                    sample_loss = self.ce_penalty_loss_fn(rspo2_value, label_value)
+                    label_tensor = torch.tensor(label_value, dtype=torch.long, device=labels[bb].device)
+                    sample_loss = self.ce_penalty_loss_fn(rspo2_value, label_tensor)
                     batch_loss += sample_loss.item()
 
                 # Append the mean loss for the batch
@@ -228,7 +230,8 @@ class PhysnetTrainer(BaseTrainer):
                     rspo2_value = torch.tensor(rspo2[idx].item(), device=label[idx].device) if not isinstance(rspo2[idx], torch.Tensor) else rspo2[idx]
                     label_value = label[idx].mean().float()
                     label_value = self.map_to_class(label_value.item())
-                    test_losses.append(cross_entropy_loss_fn(rspo2_value, label_value))
+                    label_tensor = torch.tensor(label_value, dtype=torch.long, device=label[idx].device)
+                    test_losses.append(cross_entropy_loss_fn(rspo2_value, label_tensor))
                     labels[subj_index][sort_index] = label[idx]
 
         # Compute average test loss
