@@ -1,4 +1,5 @@
 """PhysNet Trainer."""
+print
 import os
 from collections import OrderedDict
 
@@ -171,7 +172,7 @@ class PhysnetTrainer(BaseTrainer):
                 raise ValueError("Inference model path error! Please check INFERENCE.MODEL_PATH in your yaml.")
             self.model.load_state_dict(torch.load(self.config.INFERENCE.MODEL_PATH))
             print("Testing uses pretrained model!")
-            print(self.config.INFERENCE.MODEL_PATH)
+            #print(self.config.INFERENCE.MODEL_PATH)
         else:
             if self.config.TEST.USE_LAST_EPOCH:
                 last_epoch_model_path = os.path.join(
@@ -201,6 +202,8 @@ class PhysnetTrainer(BaseTrainer):
                     label = label.cpu()
                     rspo2 = rspo2.cpu()
 
+                rspo2_values = []
+                label_values = []
                 for idx in range(batch_size):
                     subj_index = test_batch[2][idx]
                     sort_index = int(test_batch[3][idx])
@@ -208,18 +211,25 @@ class PhysnetTrainer(BaseTrainer):
                         predictions[subj_index] = dict()
                         labels[subj_index] = dict()
                     predictions[subj_index][sort_index] = rspo2[idx]
+
                     rspo2_value = torch.tensor(rspo2[idx].item(), device=label[idx].device) if not isinstance(rspo2[idx], torch.Tensor) else rspo2[idx]
+                    rounded_value = round(rspo2_value.item())
+                    rspo2_value = torch.tensor(rounded_value, device=rspo2_value.device)
                     label_value = label[idx].mean().float()
+
+                    rspo2_values.append(rspo2_value.item())
+                    label_values.append(label_value.item())
+
                     test_loss.append(F.mse_loss(rspo2_value, label_value))
                     labels[subj_index][sort_index] = label[idx]
 
         print('')
         spo2_errors_tensor = torch.stack(test_loss)  # Stack into a single tensor
         RMSE = torch.sqrt(spo2_errors_tensor.mean())
-        print("RMSE:", RMSE)
+        print("RMSE:", RMSE, "\n\nPredicted SpO2 value:", np.mean(rspo2_values), "\nGround Truth value:", np.mean(label_values))
         # calculate_metrics(predictions, labels, self.config)
-        if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs 
-            self.save_test_outputs(predictions, labels, self.config)
+        # if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs 
+        #     self.save_test_outputs(predictions, labels, self.config)
 
     def save_model(self, index):
         if not os.path.exists(self.model_dir):
