@@ -582,7 +582,7 @@ class BaseLoader(Dataset):
         os.makedirs(os.path.dirname(self.file_list_path), exist_ok=True)
         file_list_df.to_csv(self.file_list_path)  # save file list to .csv
 
-    def filter_the_data(vid_idx, inputs):
+    def filter_the_data(self, inputs):
         sub_idxes = []
         for in_vid in inputs:
             filename = os.path.basename(in_vid)
@@ -608,7 +608,7 @@ class BaseLoader(Dataset):
         if not inputs:
             raise ValueError(self.dataset_name + ' dataset loading data error!')
         inputs = sorted(inputs)  # sort input file name list
-        inputs = self.filter_the_data(self.vid_idx, inputs)
+        inputs = self.filter_the_data(inputs)
         labels = [input_file.replace("input", "label") for input_file in inputs]
         self.inputs = inputs
         self.labels = labels

@@ -1,5 +1,6 @@
 BASE: ['']
 TOOLBOX_MODE: "only_test"  # "train_and_test"  or "only_test"
+VID_IDX: 0
 TRAIN:
   BATCH_SIZE: 4
   EPOCHS: 30
