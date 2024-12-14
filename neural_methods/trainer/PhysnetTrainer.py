@@ -78,19 +78,20 @@ class PhysnetTrainer(BaseTrainer):
                 data, labels = batch[0].to(torch.float32).to(self.device), batch[1].to(self.device)
 
                 # Forward pass
-                logits, rspo2, _, _ = self.model(data)
+                logits, _, _, _ = self.model(data)
 
                 # Initialize loss for the batch
                 batch_loss = 0.0
 
                 # Compute loss for each sample in the batch
                 for bb in range(data.shape[0]):
-                    rspo2_value = torch.tensor(rspo2[bb].item(), device=labels[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
+
                     label_value = labels[bb].mean().float()
                     #map label to class
                     label_value = self.map_to_class(label_value.item())
                     label_tensor = torch.tensor(label_value, dtype=torch.long, device=labels[bb].device)
-                    sample_loss = self.ce_penalty_loss_fn(rspo2_value, label_tensor)
+                    
+                    sample_loss = self.ce_penalty_loss_fn(logits[bb].unsqueeze(0), label_tensor.unsqueeze(0))
                     batch_loss += sample_loss
 
                 # Average loss across the batch
@@ -147,27 +148,39 @@ class PhysnetTrainer(BaseTrainer):
                 vbar.set_description("Validation")
 
                 # Load data and labels
-                data, labels = valid_batch[0].to(torch.float32).to(self.device), valid_batch[1].to(self.device)
+                data = valid_batch[0].to(torch.float32).to(self.device)
+                labels = valid_batch[1].to(self.device)
 
                 # Forward pass
-                logits, rspo2, _, _= self.model(data)
+                logits, _, _, _ = self.model(data)
 
-                # Compute loss for each sample in the batch
+                # Initialize batch loss
                 batch_loss = 0.0
+
+                # Compute sample-wise loss
                 for bb in range(data.shape[0]):
-                    rspo2_value = torch.tensor(rspo2[bb].item(), device=labels[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
+                    # Compute the mean of labels for this sample
                     label_value = labels[bb].mean().float()
+
+                    # Map the label to its class
                     label_value = self.map_to_class(label_value.item())
-                    label_tensor = torch.tensor(label_value, dtype=torch.long, device=labels[bb].device)
-                    sample_loss = self.ce_penalty_loss_fn(rspo2_value, label_tensor)
+
+                    # Convert mapped label to a tensor
+                    label_tensor = torch.tensor(label_value, dtype=torch.long, device=labels.device)
+
+                    # Compute loss for this sample
+                    sample_loss = self.ce_penalty_loss_fn(logits[bb].unsqueeze(0), label_tensor.unsqueeze(0))
+
+                    # Accumulate batch loss
                     batch_loss += sample_loss.item()
 
-                # Append the mean loss for the batch
+                # Append average loss for the batch
                 valid_loss.append(batch_loss / data.shape[0])
 
             # Compute mean validation loss
             mean_valid_loss = np.mean(valid_loss)
             return mean_valid_loss
+
 
 
 
@@ -214,11 +227,11 @@ class PhysnetTrainer(BaseTrainer):
                 batch_size = test_batch[0].shape[0]
                 data, label = test_batch[0].to(
                     self.config.DEVICE), test_batch[1].to(self.config.DEVICE)
-                rspo2, _, _, _ = self.model(data)
+                logits,_, _, _ = self.model(data)
 
                 if self.config.TEST.OUTPUT_SAVE_DIR:
                     label = label.cpu()
-                    rspo2 = rspo2.cpu()
+                    logits = logits.cpu()
 
                 for idx in range(batch_size):
                     subj_index = test_batch[2][idx]
@@ -226,12 +239,11 @@ class PhysnetTrainer(BaseTrainer):
                     if subj_index not in predictions.keys():
                         predictions[subj_index] = dict()
                         labels[subj_index] = dict()
-                    predictions[subj_index][sort_index] = rspo2[idx]
-                    rspo2_value = torch.tensor(rspo2[idx].item(), device=label[idx].device) if not isinstance(rspo2[idx], torch.Tensor) else rspo2[idx]
+                    predictions[subj_index][sort_index] = logits[idx]
                     label_value = label[idx].mean().float()
                     label_value = self.map_to_class(label_value.item())
                     label_tensor = torch.tensor(label_value, dtype=torch.long, device=label[idx].device)
-                    test_losses.append(cross_entropy_loss_fn(rspo2_value, label_tensor))
+                    test_losses.append(cross_entropy_loss_fn(logits[idx], label_tensor))
                     labels[subj_index][sort_index] = label[idx]
 
         # Compute average test loss
