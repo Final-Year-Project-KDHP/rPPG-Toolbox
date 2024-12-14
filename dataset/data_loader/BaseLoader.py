@@ -590,7 +590,7 @@ class BaseLoader(Dataset):
             if sub_idx not in sub_idxes:
                 sub_idxes.append(sub_idx)
         sub_idxes = sorted(sub_idxes)
-        req_sub_idx = sub_idxes[vid_idx]
+        req_sub_idx = sub_idxes[self.vid_idx]
         inputs = [x for x in inputs if int(os.path.basename(x).split("_")[0]) == req_sub_idx]
         return inputs
 
