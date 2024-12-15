@@ -29,9 +29,7 @@ class CustomCrossEntropyWithSelectivePenalty(nn.Module):
         """
         # Compute CrossEntropyLoss for the single sample
         ce_loss = self.cross_entropy(logits, target)
-        print("Logits shape:", logits.shape)
-        print("Probs shape:", probs.shape)
-        print("Probs[pred_class] shape:", probs[pred_class].shape)
+        
 
         # Compute softmax probabilities
         probs = F.softmax(logits, dim=0)
@@ -46,6 +44,9 @@ class CustomCrossEntropyWithSelectivePenalty(nn.Module):
         # Compute penalty
         for pred_class in range(len(self.class_mapping)):
             pred_value = self.class_mapping[pred_class]  # Predicted SpO₂ value
+            print("Logits shape:", logits.shape)
+            print("Probs shape:", probs.shape)
+            print("Probs[pred_class] shape:", probs[pred_class].shape)
             prob = probs[pred_class].item()  # Probability of the predicted class
 
             # Skip penalties for:
