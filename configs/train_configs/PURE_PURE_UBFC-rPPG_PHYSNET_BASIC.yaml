@@ -67,7 +67,6 @@ TEST:
   METRICS: ['MAE', 'RMSE', 'MAPE', 'Pearson', 'SNR', 'BA']
   USE_LAST_EPOCH: False                   # to use provided validation dataset to find the best epoch, should be false
   DATA:
-    VID_IDX: 0
     FS: 30
     DATASET: PURE
     DO_PREPROCESS: False                  # if first time, should be true
