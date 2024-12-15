@@ -226,7 +226,7 @@ class PhysnetTrainer(BaseTrainer):
         print('')
         spo2_errors_tensor = torch.stack(test_loss)  # Stack into a single tensor
         RMSE = torch.sqrt(spo2_errors_tensor.mean())
-        print("RMSE:", RMSE, "\n\nPredicted SpO2 value:", np.mean(rspo2_values), "\nGround Truth value:", np.mean(label_values))
+        print("RMSE:", RMSE.item(), "\nPredicted SpO2 value:", np.mean(rspo2_values), "\nGround Truth value:", np.mean(label_values))
         # calculate_metrics(predictions, labels, self.config)
         # if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs 
         #     self.save_test_outputs(predictions, labels, self.config)
