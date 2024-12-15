@@ -29,6 +29,9 @@ class CustomCrossEntropyWithSelectivePenalty(nn.Module):
         """
         # Compute CrossEntropyLoss for the single sample
         ce_loss = self.cross_entropy(logits, target)
+        print("Logits shape:", logits.shape)
+        print("Probs shape:", probs.shape)
+        print("Probs[pred_class] shape:", probs[pred_class].shape)
 
         # Compute softmax probabilities
         probs = F.softmax(logits, dim=0)
