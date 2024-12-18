@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class CustomCrossEntropyWithSelectivePenalty(nn.Module):
-    def __init__(self, alpha=0.5):
+    def __init__(self, alpha=0.8):
         """
         Custom loss function combining CrossEntropyLoss and a distance-based penalty,
         with specific cases excluded from penalties.
