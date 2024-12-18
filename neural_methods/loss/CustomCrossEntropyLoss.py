@@ -29,10 +29,9 @@ class CustomCrossEntropyWithSelectivePenalty(nn.Module):
         """
         # Compute CrossEntropyLoss for the single sample
         ce_loss = self.cross_entropy(logits, target)
-        
 
-        # Compute softmax probabilities
-        probs = F.softmax(logits, dim=0)
+        # Compute softmax probabilities and remove batch dimension
+        probs = F.softmax(logits.squeeze(0), dim=0)  # Ensure logits have shape [num_classes]
 
         # Get true class and SpO₂ value
         true_class = target.item()  # Ground truth class index
@@ -44,11 +43,9 @@ class CustomCrossEntropyWithSelectivePenalty(nn.Module):
         # Compute penalty
         for pred_class in range(len(self.class_mapping)):
             pred_value = self.class_mapping[pred_class]  # Predicted SpO₂ value
-            print("Logits shape:", logits.shape)
-            print("Probs shape:", probs.shape)
-            print("Probs[pred_class] shape:", probs[pred_class].shape)
             prob = probs[pred_class].item()  # Probability of the predicted class
-
+            print("Logits shape (squeezed):", logits.squeeze(0).shape)
+            print("Probs shape (after squeeze):", probs.shape)
             # Skip penalties for:
             # 1. Correct predictions
             # 2. Both predicted and true classes in "below 90" or "above 100" range
@@ -66,3 +63,4 @@ class CustomCrossEntropyWithSelectivePenalty(nn.Module):
         # Combine CrossEntropyLoss and penalty
         combined_loss = ce_loss + self.alpha * penalty
         return combined_loss
+
