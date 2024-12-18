@@ -44,8 +44,8 @@ class CustomCrossEntropyWithSelectivePenalty(nn.Module):
         for pred_class in range(len(self.class_mapping)):
             pred_value = self.class_mapping[pred_class]  # Predicted SpO₂ value
             prob = probs[pred_class].item()  # Probability of the predicted class
-            print("Logits shape (squeezed):", logits.squeeze(0).shape)
-            print("Probs shape (after squeeze):", probs.shape)
+            # print("Logits shape (squeezed):", logits.squeeze(0).shape)
+            # print("Probs shape (after squeeze):", probs.shape)
             # Skip penalties for:
             # 1. Correct predictions
             # 2. Both predicted and true classes in "below 90" or "above 100" range
