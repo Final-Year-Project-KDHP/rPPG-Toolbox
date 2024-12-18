@@ -457,7 +457,7 @@ def videomamba_middle(pretrained=False, **kwargs):
 @register_model
 def videomamba_rppg(pretrained=False, **kwargs):
     model = VisionMamba(
-        img_size=128, 
+        img_size=72, 
         patch_size=16, 
         depth=12, 
         embed_dim=192, 
@@ -474,7 +474,7 @@ def videomamba_rppg(pretrained=False, **kwargs):
         bimamba=True,
         # video
         kernel_size=4, 
-        num_frames=160, 
+        num_frames=128, 
         fc_drop_rate=0., 
         device=None,
         dtype=None,
