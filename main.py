@@ -64,7 +64,7 @@ def add_args(parser):
 def train_and_test(config, data_loader_dict):
     """Trains the model."""
     if config.MODEL.NAME == "Physnet":
-        model_trainer = trainer.PhysnetTrainer.PhysnetTrainer(config, data_loader_dict)
+        model_trainer = trainer.RhythmMambaTrainer.PhysnetTrainer(config, data_loader_dict)
     elif config.MODEL.NAME == "iBVPNet":
         model_trainer = trainer.iBVPNetTrainer.iBVPNetTrainer(config, data_loader_dict)
     elif config.MODEL.NAME == "Tscan":

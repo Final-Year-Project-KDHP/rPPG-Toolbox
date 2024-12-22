@@ -69,7 +69,7 @@ TEST:
   DATA:
     FS: 30
     DATASET: PURE
-    DO_PREPROCESS: True                  # if first time, should be true
+    DO_PREPROCESS: False                  # if first time, should be true
     DATA_FORMAT: NCDHW
     DATA_PATH: "/content/drive/MyDrive/Datasets/Extracted_Datasets/PURE"                     # Raw dataset path, need to be updated
     CACHED_PATH: "/content/drive/MyDrive/SpO2/Physnet/cached_data_new"    # Processed dataset save path, need to be updated

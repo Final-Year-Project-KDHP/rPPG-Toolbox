@@ -7,7 +7,7 @@ import torch
 import torch.optim as optim
 from evaluation.metrics import calculate_metrics
 from neural_methods.loss.PhysNetNegPearsonLoss import Neg_Pearson
-from neural_methods.model.PhysNet import PhysNet_padding_Encoder_Decoder_MAX
+from neural_methods.model.videoMamba import videomamba_rppg
 from neural_methods.trainer.BaseTrainer import BaseTrainer
 from torch.autograd import Variable
 import torch.nn.functional as F
