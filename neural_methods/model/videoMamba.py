@@ -240,7 +240,7 @@ class VisionMamba(nn.Module):
             img_size=img_size, patch_size=patch_size, 
             kernel_size=kernel_size,
             in_chans=channels, embed_dim=embed_dim
-        )
+        )   # Create embeddings with (batch size, embedding size, T//kernal_size, image_size//patch_size, image_size//patch_size)
         num_patches = self.patch_embed.num_patches
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, self.embed_dim))
@@ -251,6 +251,7 @@ class VisionMamba(nn.Module):
         self.head_drop = nn.Dropout(fc_drop_rate) if fc_drop_rate > 0 else nn.Identity()
         self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
 
+        # if drop_path_rate = 0.2, depth = 4 => dpr = [0.0, 0.0667, 0.1333, 0.2]   these are dropout rates of the deeper layers
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
         inter_dpr = [0.0] + dpr
         self.drop_path = DropPath(drop_path_rate) if drop_path_rate > 0. else nn.Identity()
@@ -277,9 +278,10 @@ class VisionMamba(nn.Module):
         self.norm_f = (nn.LayerNorm if not rms_norm else RMSNorm)(embed_dim, eps=norm_epsilon, **factory_kwargs)
 
         # original init
+        ## Initialize the weights of the layers
         self.apply(segm_init_weights)
         self.head.apply(segm_init_weights)
-        trunc_normal_(self.pos_embed, std=.02)
+        trunc_normal_(self.pos_embed, std=.02) # truncated normal weights
 
         # mamba init
         self.apply(

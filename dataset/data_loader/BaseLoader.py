@@ -243,6 +243,8 @@ class BaseLoader(Dataset):
                 data.append(BaseLoader.diff_normalize_data(f_c))
             elif data_type == "Standardized":
                 data.append(BaseLoader.standardized_data(f_c))
+            elif data_type == "Normalized":
+                data.append(BaseLoader.per_channel_normalize(f_c))
             else:
                 raise ValueError("Unsupported data type!")
         data = np.concatenate(data, axis=-1)  # concatenate all channels
@@ -638,6 +640,41 @@ class BaseLoader(Dataset):
         label = label / np.std(label)
         label[np.isnan(label)] = 0
         return label
+
+    @staticmethod
+    def per_channel_normalize(data):
+        """
+        Normalize RGB video data per channel along the time-axis.
+
+        Args:
+            data (numpy.ndarray): Video data with shape (n, h, w, c), where
+                                  n = number of frames,
+                                  h = height of each frame,
+                                  w = width of each frame,
+                                  c = number of channels (should be 3 for RGB).
+
+        Returns:
+            numpy.ndarray: Per-channel normalized data of the same shape.
+        """
+        n, h, w, c = data.shape
+        assert c == 3, "The input data must have 3 channels (RGB)."
+
+        normalized_data = np.zeros_like(data, dtype=np.float32)
+
+        for channel in range(c):
+            channel_data = data[:, :, :, channel]
+
+            mean = np.mean(channel_data)
+            std = np.std(channel_data)
+
+            std = std if std > 1e-7 else 1e-7
+
+            normalized_data[:, :, :, channel] = (channel_data - mean) / std
+
+        normalized_data[np.isnan(normalized_data)] = 0
+
+        return normalized_data
+
 
     @staticmethod
     def resample_ppg(input_signal, target_length):

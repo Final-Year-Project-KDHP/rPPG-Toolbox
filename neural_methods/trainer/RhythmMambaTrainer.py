@@ -30,6 +30,8 @@ class PhysnetTrainer(BaseTrainer):
         self.min_valid_loss = None
         self.best_epoch = 0
 
+        self.num_samples = {97: 133, 96: 157, 98: 236, 95: 114, 94: 44, 99: 232, 93: 11, 91: 4, 89: 1, 90: 1, 92: 2}
+
         self.model = videomamba_rppg(
             frames=config.MODEL.PHYSNET.FRAME_NUM).to(self.device)  # [3, T, 128,128]
 
@@ -70,7 +72,8 @@ class PhysnetTrainer(BaseTrainer):
             for idx, batch in enumerate(tbar):
                 tbar.set_description("Train epoch %s" % epoch)
                 data, label = batch[0].to(torch.float32).to(self.device), batch[1].to(torch.float32).to(self.device)
-                rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data)
+                
+                rspo2 = self.model(data)
                 # rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
                 # BVP_label = (BVP_label - torch.mean(BVP_label)) / \
                             # torch.std(BVP_label)  # normalize
@@ -79,7 +82,9 @@ class PhysnetTrainer(BaseTrainer):
                 for bb in range(data.shape[0]):
                     rspo2_value = torch.tensor(rspo2[bb].item(), device=label[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
                     label_value = label[bb].mean().float()
-                    rmse_loss = rmse_loss + torch.sqrt(F.mse_loss(rspo2_value, label_value))
+                    weight = 1/self.num_samples[torch.round(label_value).item()]
+                    label_value = (label_value - 89)/11
+                    rmse_loss = rmse_loss + torch.sqrt(F.mse_loss(rspo2_value, label_value)*weight)
                 rmse_loss /= data.shape[0]
                 loss = rmse_loss
                 loss.backward()
@@ -135,9 +140,10 @@ class PhysnetTrainer(BaseTrainer):
             for valid_idx, valid_batch in enumerate(vbar):
                 vbar.set_description("Validation")
                 data, label = valid_batch[0].to(torch.float32).to(self.device), valid_batch[1].to(torch.float32).to(self.device)
+                label = (label-89)/11
                 # BVP_label = valid_batch[1].to(
                 #     torch.float32).to(self.device)
-                rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data)
+                rspo2 = self.model(data)
                 # rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
                 # BVP_label = (BVP_label - torch.mean(BVP_label)) / \
                 #             torch.std(BVP_label)  # normalize
@@ -195,7 +201,8 @@ class PhysnetTrainer(BaseTrainer):
                 batch_size = test_batch[0].shape[0]
                 data, label = test_batch[0].to(
                     self.config.DEVICE), test_batch[1].to(self.config.DEVICE)
-                rspo2, _, _, _ = self.model(data)
+                label = (label-89)/11
+                rspo2 = self.model(data)
 
                 if self.config.TEST.OUTPUT_SAVE_DIR:
                     label = label.cpu()
@@ -210,6 +217,7 @@ class PhysnetTrainer(BaseTrainer):
                     predictions[subj_index][sort_index] = rspo2[idx]
                     rspo2_value = torch.tensor(rspo2[idx].item(), device=label[idx].device) if not isinstance(rspo2[idx], torch.Tensor) else rspo2[idx]
                     label_value = label[idx].mean().float()
+                    print(rspo2_value)
                     test_loss.append(F.mse_loss(rspo2_value, label_value))
                     labels[subj_index][sort_index] = label[idx]
 
