@@ -273,8 +273,18 @@ class PhysFormerTrainer(BaseTrainer):
                     labels[subj_index][sort_index] = label[idx]
 
         print('')
+        num_samples = {}
+        for key, sub_dict in predictions.items():
+            for sub_key in sub_dict:
+                sub_dict[sub_key] = sub_dict[sub_key].round()
+                value = sub_dict[sub_key].item()
+                if value not in num_samples:
+                    num_samples[value] = 1
+                else:
+                    num_samples[value] += 1
         print(predictions)
-        print(labels)
+        print(num_samples)
+        # print(labels)
         # calculate_metrics(predictions, labels, self.config)
         if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs
             self.save_test_outputs(predictions, labels, self.config)

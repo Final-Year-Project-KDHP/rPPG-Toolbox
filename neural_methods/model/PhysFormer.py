@@ -199,7 +199,7 @@ class ViT_ST_ST_Compact3_TDC_gra_sharp(nn.Module):
         classifier: str = 'token',
         #positional_embedding: str = '1d',
         in_channels: int = 3, 
-        frame: int = 128,
+        frame: int = 72,
         theta: float = 0.2,
         image_size: Optional[int] = None,
     ):
@@ -266,7 +266,8 @@ class ViT_ST_ST_Compact3_TDC_gra_sharp(nn.Module):
         )
  
         self.ConvBlockLast = nn.Conv1d(dim//2, 1, 1,stride=1, padding=0)
-        self.fc = nn.Linear(128, 1)  # Reduces [B, 1, 128] to [B, 1]
+        self.fc1 = nn.Linear(128, 256)  # Reduces [B, 1, 128] to [B, 1]
+        self.fc2 = nn.Linear(256, 1)
         
         
         # Initialize weights
@@ -322,6 +323,7 @@ class ViT_ST_ST_Compact3_TDC_gra_sharp(nn.Module):
         # print("last conv:", rPPG.shape)
         
         rPPG = rPPG.squeeze(1)
-        output = self.fc(rPPG)
+        features_last = self.fc1(rPPG)
+        output = self.fc2(features_last)
         
-        return output, Score1, Score2, Score3
+        return output
