@@ -199,7 +199,7 @@ class ViT_ST_ST_Compact3_TDC_gra_sharp(nn.Module):
         classifier: str = 'token',
         #positional_embedding: str = '1d',
         in_channels: int = 3, 
-        frame: int = 160,
+        frame: int = 128,
         theta: float = 0.2,
         image_size: Optional[int] = None,
     ):
@@ -213,7 +213,7 @@ class ViT_ST_ST_Compact3_TDC_gra_sharp(nn.Module):
         # Image and patch sizes
         t, h, w = as_tuple(image_size)  # tube sizes
         # print("patches:",patches)
-        ft, fh, fw = as_tuple(patches)  # patch sizes, ft = 4 ==> 160/4=40    [4,4,4]
+        ft, fh, fw = as_tuple(patches)  # patch sizes, ft = 4 ==> 128/4=40    [4,4,4]
         gt, gh, gw = t//ft, h // fh, w // fw  # number of patches
         seq_len = gh * gw * gt
 
@@ -266,7 +266,7 @@ class ViT_ST_ST_Compact3_TDC_gra_sharp(nn.Module):
         )
  
         self.ConvBlockLast = nn.Conv1d(dim//2, 1, 1,stride=1, padding=0)
-        self.fc = nn.Linear(160, 1)  # Reduces [B, 1, 160] to [B, 1]
+        self.fc = nn.Linear(128, 1)  # Reduces [B, 1, 128] to [B, 1]
         
         
         # Initialize weights
@@ -290,7 +290,7 @@ class ViT_ST_ST_Compact3_TDC_gra_sharp(nn.Module):
         
         x = self.Stem0(x)
         x = self.Stem1(x)
-        x = self.Stem2(x)  # [B, 64, 160, 64, 64]
+        x = self.Stem2(x)  # [B, 64, 128, 64, 64]
         # print("stem shape:", x.shape)
         
         x = self.patch_embedding(x)  # [B, 64, 40, 4, 4]
@@ -311,14 +311,14 @@ class ViT_ST_ST_Compact3_TDC_gra_sharp(nn.Module):
         
         features_last = self.upsample(features_last)		    # x [B, 64, 7*7, 80]
         # print("upsample 1:", features_last.shape)
-        features_last = self.upsample2(features_last)		    # x [B, 32, 7*7, 160]
+        features_last = self.upsample2(features_last)		    # x [B, 32, 7*7, 128]
         # print("upsample 2:", features_last.shape)
         
-        features_last = torch.mean(features_last,3)     # x [B, 32, 160, 4]  
+        features_last = torch.mean(features_last,3)     # x [B, 32, 128, 4]  
         # print("first mean:", features_last.shape)
-        features_last = torch.mean(features_last,3)     # x [B, 32, 160]    
+        features_last = torch.mean(features_last,3)     # x [B, 32, 128]    
         # print("second mean:", features_last.shape)
-        rPPG = self.ConvBlockLast(features_last)    # x [B, 1, 160]
+        rPPG = self.ConvBlockLast(features_last)    # x [B, 1, 128]
         # print("last conv:", rPPG.shape)
         
         rPPG = rPPG.squeeze(1)

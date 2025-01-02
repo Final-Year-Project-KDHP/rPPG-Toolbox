@@ -111,7 +111,7 @@ class PhysFormerTrainer(BaseTrainer):
                 self.optimizer.zero_grad()
 
                 gra_sharp = 2.0
-                rspo2, _, _, _ = self.model(data, gra_sharp)
+                rspo2 = self.model(data, gra_sharp)
                 # rPPG = (rPPG-torch.mean(rPPG, axis=-1).view(-1, 1))/torch.std(rPPG, axis=-1).view(-1, 1)    # normalize
                 # loss_rPPG = self.criterion_Pearson(rPPG, label)
 
@@ -208,7 +208,7 @@ class PhysFormerTrainer(BaseTrainer):
                 data, label = val_batch[0].float().to(self.device), val_batch[1].float().to(self.device)
                 
                 gra_sharp = 2.0
-                rspo2, _, _, _ = self.model(data, gra_sharp)
+                rspo2 = self.model(data, gra_sharp)
                 
                 # for predicted_spo2, actual_spo2 in zip(rspo2, label):
                 #     spo2_errors.append((predicted_spo2.item() - actual_spo2.item()) ** 2)
@@ -262,7 +262,7 @@ class PhysFormerTrainer(BaseTrainer):
                 data, label = test_batch[0].to(
                     self.config.DEVICE), test_batch[1].to(self.config.DEVICE)
                 gra_sharp = 2.0
-                pred_ppg_test, _, _, _ = self.model(data, gra_sharp)
+                pred_ppg_test = self.model(data, gra_sharp)
                 for idx in range(batch_size):
                     subj_index = test_batch[2][idx]
                     sort_index = int(test_batch[3][idx])
@@ -273,7 +273,9 @@ class PhysFormerTrainer(BaseTrainer):
                     labels[subj_index][sort_index] = label[idx]
 
         print('')
-        calculate_metrics(predictions, labels, self.config)
+        print(predictions)
+        print(labels)
+        # calculate_metrics(predictions, labels, self.config)
         if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs
             self.save_test_outputs(predictions, labels, self.config)
 
