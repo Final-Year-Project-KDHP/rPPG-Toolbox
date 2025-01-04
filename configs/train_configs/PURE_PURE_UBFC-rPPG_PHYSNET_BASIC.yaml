@@ -8,8 +8,8 @@ TRAIN:
   PLOT_LOSSES_AND_LR: True
   DATA:
     FS: 30
-    DATASET: PURE
-    DO_PREPROCESS: False            # if first time, should be true
+    DATASET: UBFC-PHYS
+    DO_PREPROCESS: True            # if first time, should be true
     DATA_FORMAT: NCDHW
     DATA_PATH: "/content/NBHR_reference"                     # Raw dataset path, need to be updated
     CACHED_PATH: "/content/drive/MyDrive/SpO2/NBHR/Physnet/cached_data_new"    # Processed dataset save path, need to be updated
@@ -37,8 +37,8 @@ TRAIN:
 VALID:
   DATA:
     FS: 30
-    DATASET: PURE
-    DO_PREPROCESS: False                # if first time, should be true
+    DATASET: UBFC-PHYS
+    DO_PREPROCESS: True                # if first time, should be true
     DATA_FORMAT: NCDHW
     DATA_PATH: "/content/NBHR_reference"                     # Raw dataset path, need to be updated
     CACHED_PATH: "/content/drive/MyDrive/SpO2/NBHR/Physnet/cached_data_new"    # Processed dataset save path, need to be updated
@@ -68,8 +68,8 @@ TEST:
   USE_LAST_EPOCH: False                   # to use provided validation dataset to find the best epoch, should be false
   DATA:
     FS: 30
-    DATASET: PURE
-    DO_PREPROCESS: False                  # if first time, should be true
+    DATASET: UBFC-PHYS
+    DO_PREPROCESS: True                  # if first time, should be true
     DATA_FORMAT: NCDHW
     DATA_PATH: "/content/NBHR_reference"                     # Raw dataset path, need to be updated
     CACHED_PATH: "/content/drive/MyDrive/SpO2/NBHR/Physnet/cached_data_new"    # Processed dataset save path, need to be updated
