@@ -210,7 +210,7 @@ class BaseLoader(Dataset):
         self.load_preprocessed_data()  # load all data and corresponding labels (sorted for consistency)
         print("Total Number of raw files preprocessed:", len(data_dirs_split), end='\n\n')
 
-    def preprocess(self, frames, bvps, config_preprocess):
+    def preprocess(self, frames, hr_bvps, spo2_bvps, config_preprocess):
         """Preprocesses a pair of data.
 
         Args:
@@ -251,22 +251,21 @@ class BaseLoader(Dataset):
         if config_preprocess.LABEL_TYPE == "Raw":
             pass
         elif config_preprocess.LABEL_TYPE == "DiffNormalized":
-            # bvps = BaseLoader.diff_normalize_label(bvps)
-            pass
+            hr_bvps = BaseLoader.diff_normalize_label(hr_bvps)
         elif config_preprocess.LABEL_TYPE == "Standardized":
-            # bvps = BaseLoader.standardized_label(bvps)
-            pass
+            hr_bvps = BaseLoader.standardized_label(hr_bvps)
         else:
             raise ValueError("Unsupported label type!")
 
         if config_preprocess.DO_CHUNK:  # chunk data into snippets
-            frames_clips, bvps_clips = self.chunk(
-                data, bvps, config_preprocess.CHUNK_LENGTH)
+            frames_clips, hr_bvps_clips, spo2_bvps_clips = self.chunk(
+                data, hr_bvps, spo2_bvps, config_preprocess.CHUNK_LENGTH)
         else:
             frames_clips = np.array([data])
-            bvps_clips = np.array([bvps])
+            hr_bvps_clips = np.array([hr_bvps])
+            spo2_bvps_clips = np.array([spo2_bvps])
 
-        return frames_clips, bvps_clips
+        return frames_clips, hr_bvps_clips, spo2_bvps_clips
 
     def face_detection(self, frame, backend, use_larger_box=False, larger_box_coef=1.0):
         """Face detection on a single frame.
@@ -401,7 +400,7 @@ class BaseLoader(Dataset):
             resized_frames[i] = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
         return resized_frames
 
-    def chunk(self, frames, bvps, chunk_length):
+    def chunk(self, frames, hr_bvps, spo2_bvps, chunk_length):
         """Chunk the data into small chunks.
 
         Args:
@@ -414,17 +413,18 @@ class BaseLoader(Dataset):
         """
 
         clip_num = frames.shape[0] // chunk_length
-        bvps_clips = []
+        hr_bvps_clips = []
+        spo2_bvps_clips = []
         frames_clips = []
         # frames_clips = [frames[i * chunk_length:(i + 1) * chunk_length] for i in range(clip_num)]
         # bvps_clips = [bvps[i * chunk_length:(i + 1) * chunk_length] for i in range(clip_num)]
         for i in range(clip_num):
-            bvp_clip = bvps[i * chunk_length:(i + 1) * chunk_length]
-            bvp_clip_mean = np.mean(bvp_clip)
-            if bvp_clip_mean >= 90:
-                bvps_clips.append(bvp_clip)
-                frames_clips.append(frames[i * chunk_length:(i + 1) * chunk_length])
-        return np.array(frames_clips), np.array(bvps_clips)
+            hr_bvp_clip = hr_bvps[i * chunk_length:(i + 1) * chunk_length]
+            spo2_bvp_clip = spo2_bvps[i * chunk_length:(i + 1) * chunk_length]
+            hr_bvps_clips.append(hr_bvp_clip)
+            spo2_bvps_clips.append(spo2_bvp_clip)
+            frames_clips.append(frames[i * chunk_length:(i + 1) * chunk_length])
+        return np.array(frames_clips), np.array(hr_bvps_clips), np.array(spo2_bvp_clips)
 
     def save(self, frames_clips, bvps_clips, filename):
         """Save all the chunked data.
@@ -451,7 +451,7 @@ class BaseLoader(Dataset):
             count += 1
         return count
 
-    def save_multi_process(self, frames_clips, bvps_clips, filename):
+    def save_multi_process(self, frames_clips, hr_bvps_clips, spo2_bvps_clips, filename):
         """Save all the chunked data with multi-thread processing.
 
         Args:
@@ -474,7 +474,7 @@ class BaseLoader(Dataset):
             input_path_name_list.append(input_path_name)
             label_path_name_list.append(label_path_name)
             np.save(input_path_name, frames_clips[i])
-            np.save(label_path_name, bvps_clips[i])
+            np.save(label_path_name, np.array([hr_bvps_clips[i], spo2_bvps_clips[i]]))
             count += 1
         return input_path_name_list, label_path_name_list
 
