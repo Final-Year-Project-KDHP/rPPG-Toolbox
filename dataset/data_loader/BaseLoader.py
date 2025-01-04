@@ -424,7 +424,7 @@ class BaseLoader(Dataset):
             hr_bvps_clips.append(hr_bvp_clip)
             spo2_bvps_clips.append(spo2_bvp_clip)
             frames_clips.append(frames[i * chunk_length:(i + 1) * chunk_length])
-        return np.array(frames_clips), np.array(hr_bvps_clips), np.array(spo2_bvp_clips)
+        return np.array(frames_clips), np.array(hr_bvps_clips), np.array(spo2_bvps_clips)
 
     def save(self, frames_clips, bvps_clips, filename):
         """Save all the chunked data.
