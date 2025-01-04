@@ -64,7 +64,7 @@ def add_args(parser):
 def train_and_test(config, data_loader_dict):
     """Trains the model."""
     if config.MODEL.NAME == "Physnet":
-        model_trainer = trainer.RhythmMambaTrainer.PhysnetTrainer(config, data_loader_dict)
+        model_trainer = trainer.PhysnetTrainer.PhysnetTrainer(config, data_loader_dict)
     elif config.MODEL.NAME == "iBVPNet":
         model_trainer = trainer.iBVPNetTrainer.iBVPNetTrainer(config, data_loader_dict)
     elif config.MODEL.NAME == "Tscan":
@@ -86,7 +86,7 @@ def train_and_test(config, data_loader_dict):
 def test(config, data_loader_dict):
     """Tests the model."""
     if config.MODEL.NAME == "Physnet":
-        model_trainer = trainer.RhythmMambaTrainer.PhysnetTrainer(config, data_loader_dict)
+        model_trainer = trainer.PhysnetTrainer.PhysnetTrainer(config, data_loader_dict)
     elif config.MODEL.NAME == "iBVPNet":
         model_trainer = trainer.iBVPNetTrainer.iBVPNetTrainer(config, data_loader_dict)    
     elif config.MODEL.NAME == "Tscan":
@@ -160,6 +160,8 @@ if __name__ == "__main__":
             train_loader = data_loader.iBVPLoader.iBVPLoader
         elif config.TRAIN.DATA.DATASET == "VIPL-HR":
             train_loader = data_loader.VIPLLoader.VIPLLoader
+        elif config.TRAIN.DATA.DATASET == "NBHR":
+            train_loader = data_loader.NBHRLoader.NBHRLoader
         else:
             raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
                              SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP.")
@@ -205,6 +207,8 @@ if __name__ == "__main__":
             valid_loader = data_loader.VIPLLoader.VIPLLoader
         elif config.VALID.DATA.DATASET is None and not config.TEST.USE_LAST_EPOCH:
             raise ValueError("Validation dataset not specified despite USE_LAST_EPOCH set to False!")
+        elif config.TRAIN.DATA.DATASET == "NBHR":
+            train_loader = data_loader.NBHRLoader.NBHRLoader
         else:
             raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
                              SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP")
@@ -247,6 +251,8 @@ if __name__ == "__main__":
             test_loader = data_loader.iBVPLoader.iBVPLoader
         elif config.TRAIN.DATA.DATASET == "VIPL-HR":
             test_loader = data_loader.VIPLLoader.VIPLLoader
+        elif config.TRAIN.DATA.DATASET == "NBHR":
+            train_loader = data_loader.NBHRLoader.NBHRLoader
         else:
             raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
                              SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP.")

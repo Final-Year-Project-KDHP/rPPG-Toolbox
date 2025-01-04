@@ -76,7 +76,7 @@ class NBHRLoader(BaseLoader):
         hr_bvps = BaseLoader.resample_ppg(hr_bvps, frames.shape[0])
         spo2_bvps = BaseLoader.resample_ppg(spo2_bvps, frames.shape[0])
             
-        frames_clips, hr_bvps_clips, spo2_bvps_clips = self.preprocess(frames, bvps, config_preprocess)
+        frames_clips, hr_bvps_clips, spo2_bvps_clips = self.preprocess(frames, hr_bvps, spo2_bvps, config_preprocess)
         input_name_list, label_name_list = self.save_multi_process(frames_clips, hr_bvps_clips, spo2_bvps_clips, saved_filename)
         file_list_dict[i] = input_name_list
 
@@ -122,19 +122,8 @@ class NBHRLoader(BaseLoader):
     @staticmethod
     def read_wave(bvp_file):
         """Reads a bvp signal file."""
-        hr_bvp = []
-        spo2_bvp = []
-        with open(bvp_file, "r") as f:
-            d = csv.reader(f)
-            for row in d.iloc[:, 1]:
-                hr_bvp.append(float(row))
-            for row in d.iloc[:, 3]:
-                spo2_bvp.append(float(row))
-        return np.asarray(hr_bvp), np.asarray(spo2_bvp)
-
-
-
-
-
-
+        df = pd.read_csv(bvp_file)
+        hr_bvp = df.iloc[:, 1].astype(float).values
+        spo2_bvp = df.iloc[:, 3].astype(float).values
+        return hr_bvp, spo2_bvp
 
