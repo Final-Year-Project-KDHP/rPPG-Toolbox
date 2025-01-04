@@ -467,7 +467,7 @@ class BaseLoader(Dataset):
         count = 0
         input_path_name_list = []
         label_path_name_list = []
-        for i in range(len(bvps_clips)):
+        for i in range(len(hr_bvps_clips)):
             assert (len(self.inputs) == len(self.labels))
             input_path_name = self.cached_path + os.sep + "{0}_input{1}.npy".format(filename, str(count))
             label_path_name = self.cached_path + os.sep + "{0}_label{1}.npy".format(filename, str(count))
