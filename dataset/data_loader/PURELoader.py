@@ -118,13 +118,14 @@ class PURELoader(BaseLoader):
         if config_preprocess.USE_PSUEDO_PPG_LABEL:
             bvps = self.generate_pos_psuedo_labels(frames, fs=self.config_data.FS)
         else:
-            bvps = self.read_wave(
+            hr_bvps, spo2_bvps = self.read_wave(
                 os.path.join(data_dirs[i]['path'], "{0}.json".format(filename)))
 
         target_length = frames.shape[0]
-        bvps = BaseLoader.resample_ppg(bvps, target_length)
-        frames_clips, bvps_clips = self.preprocess(frames, bvps, config_preprocess)
-        input_name_list, label_name_list = self.save_multi_process(frames_clips, bvps_clips, saved_filename)
+        hr_bvps = BaseLoader.resample_ppg(hr_bvps, target_length)
+        spo2_bvps = BaseLoader.resample_ppg(spo2_bvps, target_length)
+        frames_clips, hr_bvps, spo2_bvps = self.preprocess(frames, hr_bvps, spo2_bvps, config_preprocess)
+        input_name_list, label_name_list = self.save_multi_process(frames_clips, hr_bvps, spo2_bvps, saved_filename)
         file_list_dict[i] = input_name_list
 
     @staticmethod
@@ -143,6 +144,8 @@ class PURELoader(BaseLoader):
         """Reads a bvp signal file."""
         with open(bvp_file, "r") as f:
             labels = json.load(f)
-            waves = [label["Value"]["o2saturation"]
+            spo2_waves = [label["Value"]["o2saturation"]
                      for label in labels["/FullPackage"]]
-        return np.asarray(waves)
+            hr_waves = [label["Value"]["waveform"]
+                     for label in labels["/FullPackage"]]
+        return np.asarray(hr_waves), np.asarray(spo2_waves)

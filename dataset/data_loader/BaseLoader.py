@@ -210,7 +210,7 @@ class BaseLoader(Dataset):
         self.load_preprocessed_data()  # load all data and corresponding labels (sorted for consistency)
         print("Total Number of raw files preprocessed:", len(data_dirs_split), end='\n\n')
 
-    def preprocess(self, frames, bvps, config_preprocess):
+    def preprocess(self, frames, hr_bvps, spo2_bvps, config_preprocess):
         """Preprocesses a pair of data.
 
         Args:
@@ -243,28 +243,29 @@ class BaseLoader(Dataset):
                 data.append(BaseLoader.diff_normalize_data(f_c))
             elif data_type == "Standardized":
                 data.append(BaseLoader.standardized_data(f_c))
+            elif data_type == "Normalized":
+                data.append(BaseLoader.per_channel_normalize(f_c))
             else:
                 raise ValueError("Unsupported data type!")
         data = np.concatenate(data, axis=-1)  # concatenate all channels
         if config_preprocess.LABEL_TYPE == "Raw":
             pass
         elif config_preprocess.LABEL_TYPE == "DiffNormalized":
-            # bvps = BaseLoader.diff_normalize_label(bvps)
-            pass
+            hr_bvps = BaseLoader.diff_normalize_label(hr_bvps)
         elif config_preprocess.LABEL_TYPE == "Standardized":
-            # bvps = BaseLoader.standardized_label(bvps)
-            pass
+            hr_bvps = BaseLoader.standardized_label(hr_bvps)
         else:
             raise ValueError("Unsupported label type!")
 
         if config_preprocess.DO_CHUNK:  # chunk data into snippets
-            frames_clips, bvps_clips = self.chunk(
-                data, bvps, config_preprocess.CHUNK_LENGTH)
+            frames_clips, hr_bvps_clips, spo2_bvps_clips = self.chunk(
+                data, hr_bvps, spo2_bvps, config_preprocess.CHUNK_LENGTH)
         else:
             frames_clips = np.array([data])
-            bvps_clips = np.array([bvps])
+            hr_bvps_clips = np.array([hr_bvps])
+            spo2_bvps_clips = np.array([spo2_bvps])
 
-        return frames_clips, bvps_clips
+        return frames_clips, hr_bvps_clips, spo2_bvps_clips
 
     def face_detection(self, frame, backend, use_larger_box=False, larger_box_coef=1.0):
         """Face detection on a single frame.
@@ -399,7 +400,7 @@ class BaseLoader(Dataset):
             resized_frames[i] = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
         return resized_frames
 
-    def chunk(self, frames, bvps, chunk_length):
+    def chunk(self, frames, hr_bvps, spo2_bvps, chunk_length):
         """Chunk the data into small chunks.
 
         Args:
@@ -412,9 +413,18 @@ class BaseLoader(Dataset):
         """
 
         clip_num = frames.shape[0] // chunk_length
-        frames_clips = [frames[i * chunk_length:(i + 1) * chunk_length] for i in range(clip_num)]
-        bvps_clips = [bvps[i * chunk_length:(i + 1) * chunk_length] for i in range(clip_num)]
-        return np.array(frames_clips), np.array(bvps_clips)
+        hr_bvps_clips = []
+        spo2_bvps_clips = []
+        frames_clips = []
+        # frames_clips = [frames[i * chunk_length:(i + 1) * chunk_length] for i in range(clip_num)]
+        # bvps_clips = [bvps[i * chunk_length:(i + 1) * chunk_length] for i in range(clip_num)]
+        for i in range(clip_num):
+            hr_bvp_clip = hr_bvps[i * chunk_length:(i + 1) * chunk_length]
+            spo2_bvp_clip = spo2_bvps[i * chunk_length:(i + 1) * chunk_length]
+            hr_bvps_clips.append(hr_bvp_clip)
+            spo2_bvps_clips.append(spo2_bvp_clip)
+            frames_clips.append(frames[i * chunk_length:(i + 1) * chunk_length])
+        return np.array(frames_clips), np.array(hr_bvps_clips), np.array(spo2_bvps_clips)
 
     def save(self, frames_clips, bvps_clips, filename):
         """Save all the chunked data.
@@ -441,7 +451,7 @@ class BaseLoader(Dataset):
             count += 1
         return count
 
-    def save_multi_process(self, frames_clips, bvps_clips, filename):
+    def save_multi_process(self, frames_clips, hr_bvps_clips, spo2_bvps_clips, filename):
         """Save all the chunked data with multi-thread processing.
 
         Args:
@@ -457,14 +467,14 @@ class BaseLoader(Dataset):
         count = 0
         input_path_name_list = []
         label_path_name_list = []
-        for i in range(len(bvps_clips)):
+        for i in range(len(hr_bvps_clips)):
             assert (len(self.inputs) == len(self.labels))
             input_path_name = self.cached_path + os.sep + "{0}_input{1}.npy".format(filename, str(count))
             label_path_name = self.cached_path + os.sep + "{0}_label{1}.npy".format(filename, str(count))
             input_path_name_list.append(input_path_name)
             label_path_name_list.append(label_path_name)
             np.save(input_path_name, frames_clips[i])
-            np.save(label_path_name, bvps_clips[i])
+            np.save(label_path_name, np.array([hr_bvps_clips[i], spo2_bvps_clips[i]]))
             count += 1
         return input_path_name_list, label_path_name_list
 
@@ -630,6 +640,41 @@ class BaseLoader(Dataset):
         label = label / np.std(label)
         label[np.isnan(label)] = 0
         return label
+
+    @staticmethod
+    def per_channel_normalize(data):
+        """
+        Normalize RGB video data per channel along the time-axis.
+
+        Args:
+            data (numpy.ndarray): Video data with shape (n, h, w, c), where
+                                  n = number of frames,
+                                  h = height of each frame,
+                                  w = width of each frame,
+                                  c = number of channels (should be 3 for RGB).
+
+        Returns:
+            numpy.ndarray: Per-channel normalized data of the same shape.
+        """
+        n, h, w, c = data.shape
+        assert c == 3, "The input data must have 3 channels (RGB)."
+
+        normalized_data = np.zeros_like(data, dtype=np.float32)
+
+        for channel in range(c):
+            channel_data = data[:, :, :, channel]
+
+            mean = np.mean(channel_data)
+            std = np.std(channel_data)
+
+            std = std if std > 1e-7 else 1e-7
+
+            normalized_data[:, :, :, channel] = (channel_data - mean) / std
+
+        normalized_data[np.isnan(normalized_data)] = 0
+
+        return normalized_data
+
 
     @staticmethod
     def resample_ppg(input_signal, target_length):
