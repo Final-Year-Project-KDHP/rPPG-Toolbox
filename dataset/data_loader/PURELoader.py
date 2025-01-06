@@ -105,8 +105,9 @@ class PURELoader(BaseLoader):
         # Read Frames
         if 'None' in config_preprocess.DATA_AUG:
             # Utilize dataset-specific function to read video
-            frames = self.read_video(
-                os.path.join(data_dirs[i]['path'], filename, ""))
+            frames = len(os.listdir(os.path.join(data_dirs[i]['path'], filename, "")))
+            # frames = self.read_video(
+            #     os.path.join(data_dirs[i]['path'], filename, ""))
         elif 'Motion' in config_preprocess.DATA_AUG:
             # Utilize general function to read video in .npy format
             frames = self.read_npy_video(
@@ -121,7 +122,7 @@ class PURELoader(BaseLoader):
             hr_bvps, spo2_bvps = self.read_wave(
                 os.path.join(data_dirs[i]['path'], "{0}.json".format(filename)))
 
-        target_length = frames.shape[0]
+        target_length = frames
         hr_bvps = BaseLoader.resample_ppg(hr_bvps, target_length)
         spo2_bvps = BaseLoader.resample_ppg(spo2_bvps, target_length)
         frames_clips, hr_bvps, spo2_bvps = self.preprocess(frames, hr_bvps, spo2_bvps, config_preprocess)

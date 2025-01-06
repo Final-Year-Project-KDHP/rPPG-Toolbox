@@ -259,7 +259,7 @@ class BaseLoader(Dataset):
 
         if config_preprocess.DO_CHUNK:  # chunk data into snippets
             frames_clips, hr_bvps_clips, spo2_bvps_clips = self.chunk(
-                data, hr_bvps, spo2_bvps, config_preprocess.CHUNK_LENGTH)
+                frames, hr_bvps, spo2_bvps, config_preprocess.CHUNK_LENGTH)
         else:
             frames_clips = np.array([data])
             hr_bvps_clips = np.array([hr_bvps])
@@ -412,7 +412,7 @@ class BaseLoader(Dataset):
             bvp_clips: all chunks of bvp frames
         """
 
-        clip_num = frames.shape[0] // chunk_length
+        clip_num = frames // chunk_length
         hr_bvps_clips = []
         spo2_bvps_clips = []
         frames_clips = []
