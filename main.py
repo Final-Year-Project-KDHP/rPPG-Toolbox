@@ -208,7 +208,7 @@ if __name__ == "__main__":
         elif config.VALID.DATA.DATASET is None and not config.TEST.USE_LAST_EPOCH:
             raise ValueError("Validation dataset not specified despite USE_LAST_EPOCH set to False!")
         elif config.TRAIN.DATA.DATASET == "NBHR":
-            train_loader = data_loader.NBHRLoader.NBHRLoader
+            valid_loader = data_loader.NBHRLoader.NBHRLoader
         else:
             raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
                              SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP")
@@ -252,7 +252,7 @@ if __name__ == "__main__":
         elif config.TRAIN.DATA.DATASET == "VIPL-HR":
             test_loader = data_loader.VIPLLoader.VIPLLoader
         elif config.TRAIN.DATA.DATASET == "NBHR":
-            train_loader = data_loader.NBHRLoader.NBHRLoader
+            test_loader = data_loader.NBHRLoader.NBHRLoader
         else:
             raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
                              SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP.")
