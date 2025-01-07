@@ -266,9 +266,13 @@ class ViT_ST_ST_Compact3_TDC_gra_sharp(nn.Module):
         )
  
         self.ConvBlockLast = nn.Conv1d(dim//2, 1, 1,stride=1, padding=0)
-        self.fc1 = nn.Linear(128, 256)  # Reduces [B, 1, 128] to [B, 1]
-        self.fc2 = nn.Linear(256, 1)
+        self.fc1 = nn.Linear(128, 512)  # Reduces [B, 1, 128] to [B, 1]
         
+        self.fc1_hr = nn.Linear(512, 256)
+        self.fc2_hr = nn.Linear(256, 128)
+
+        self.fc1_spo2 = nn.Linear(512, 128)
+        self.fc2_spo2 = nn.Linear(128, 1)
         
         # Initialize weights
         self.init_weights()
@@ -319,11 +323,16 @@ class ViT_ST_ST_Compact3_TDC_gra_sharp(nn.Module):
         # print("first mean:", features_last.shape)
         features_last = torch.mean(features_last,3)     # x [B, 32, 128]    
         # print("second mean:", features_last.shape)
-        rPPG = self.ConvBlockLast(features_last)    # x [B, 1, 128]
+        features_last = self.ConvBlockLast(features_last)    # x [B, 1, 128]
         # print("last conv:", rPPG.shape)
         
-        rPPG = rPPG.squeeze(1)
-        features_last = self.fc1(rPPG)
-        output = self.fc2(features_last)
+        features_last = features_last.squeeze(1)
+        features_last = self.fc1(features_last)
+
+        rPPG = self.fc1_hr(features_last)
+        rPPG = self.fc2_hr(rPPG)
+
+        spo2 = self.fc1_spo2(features_last)
+        spo2 = self.fc2_spo2(spo2)
         
-        return output
+        return rPPG, spo2

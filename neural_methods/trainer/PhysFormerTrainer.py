@@ -94,77 +94,81 @@ class PhysFormerTrainer(BaseTrainer):
         for epoch in range(self.max_epoch_num):
             print('')
             print(f"====Training Epoch: {epoch}====")
-            # loss_rPPG_avg = []
-            # loss_peak_avg = []
-            # loss_kl_avg_test = []
-            # loss_hr_mae = []
+            loss_rPPG_avg = []
+            loss_peak_avg = []
+            loss_kl_avg_test = []
+            loss_hr_mae = []
             loss_spo2_rmse = []
 
             self.model.train()
-            tbar = tqdm(data_loader["train"], ncols=80)
+            tbar = tqdm(data_loader["train"], ncols=100)
             for idx, batch in enumerate(tbar):
-                # hr = torch.tensor([self.get_hr(i) for i in batch[1]]).float().to(self.device)
+                # print(batch[1][:, 0:1, :])
+                # print(batch[1][:, 0:1, :].shape)
+                hr = torch.tensor([self.get_hr(i) for i in np.squeeze(batch[1][:, 0:1, :], axis=1)]).float().to(self.device)
                 data, label = batch[0].float().to(self.device), batch[1].float().to(self.device)
-                # print(label.shape)
                 # label = label.mean()
+                rPPG_label = np.squeeze(label[:, 0:1, :], axis=1)
+                spo2_label = np.squeeze(label[:, 1:2, :], axis=1)
 
                 self.optimizer.zero_grad()
 
                 gra_sharp = 2.0
-                rspo2 = self.model(data, gra_sharp)
-                # rPPG = (rPPG-torch.mean(rPPG, axis=-1).view(-1, 1))/torch.std(rPPG, axis=-1).view(-1, 1)    # normalize
-                # loss_rPPG = self.criterion_Pearson(rPPG, label)
+                rPPG, rspo2 = self.model(data, gra_sharp)
+                rPPG = (rPPG-torch.mean(rPPG, axis=-1).view(-1, 1))/torch.std(rPPG, axis=-1).view(-1, 1)    # normalize
+                loss_rPPG = self.criterion_Pearson(rPPG, rPPG_label)
 
-                # fre_loss = 0.0
-                # kl_loss = 0.0
-                # train_mae = 0.0
+                fre_loss = 0.0
+                kl_loss = 0.0
+                train_mae = 0.0
                 rmse_loss = 0.0
                 for bb in range(data.shape[0]):
-                    # loss_distribution_kl, \
-                    # fre_loss_temp, \
-                    # train_mae_temp = TorchLossComputer.cross_entropy_power_spectrum_DLDL_softmax2(
-                    #     rPPG[bb],
-                    #     hr[bb],
-                    #     self.frame_rate,
-                    #     std=1.0
-                    # )
+                    loss_distribution_kl, \
+                    fre_loss_temp, \
+                    train_mae_temp = TorchLossComputer.cross_entropy_power_spectrum_DLDL_softmax2(
+                        rPPG[bb],
+                        hr[bb],
+                        self.frame_rate,
+                        std=1.0
+                    )
                     # print("\n")
                     # print(rspo2[bb].item())
                     # print(label[bb].mean())
-                    rspo2_value = torch.tensor(rspo2[bb].item(), device=label[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
-                    label_value = label[bb].mean().float()
+                    rspo2_value = torch.tensor(rspo2[bb].item(), device=spo2_label[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
+                    label_value = spo2_label[bb].mean().float()
                     rmse_loss = rmse_loss + torch.sqrt(F.mse_loss(rspo2_value, label_value))
                     
-                    # fre_loss = fre_loss+fre_loss_temp
-                    # kl_loss = kl_loss+loss_distribution_kl
-                    # train_mae = train_mae+train_mae_temp
-                # fre_loss /= data.shape[0]
-                # kl_loss /= data.shape[0]
-                # train_mae /= data.shape[0]
-                rmse_loss /= data.shape[0]
+                    fre_loss = fre_loss+fre_loss_temp
+                    kl_loss = kl_loss+loss_distribution_kl
+                    train_mae = train_mae+train_mae_temp
+                fre_loss /= data.shape[0]
+                kl_loss /= data.shape[0]
+                train_mae /= data.shape[0]
+                spo2_loss = rmse_loss / data.shape[0]
 
-                # if epoch>10:
-                #     a = 0.05
-                #     b = 5.0
-                # else:
-                #     a = a_start
-                #     # exp ascend
-                #     b = b_start*math.pow(exp_b, epoch/10.0)
+                if epoch>10:
+                    a = 0.05
+                    b = 5.0
+                else:
+                    a = a_start
+                    # exp ascend
+                    b = b_start*math.pow(exp_b, epoch/10.0)
 
-                # loss = a*loss_rPPG + b*(fre_loss+kl_loss)
-                loss = rmse_loss
+                hr_loss = a*loss_rPPG + b*(fre_loss+kl_loss)
+                loss = 0.4*hr_loss + 0.6*spo2_loss
+                tbar.set_postfix(loss=f"{loss:.4f}", hr_loss=f"{hr_loss:.4f}", spo2_loss=f"{spo2_loss:.4f}")
                 loss.backward()
                 self.optimizer.step()
 
                 n = data.size(0)
-                # loss_rPPG_avg.append(float(loss_rPPG.data))
-                # loss_peak_avg.append(float(fre_loss.data))
-                # loss_kl_avg_test.append(float(kl_loss.data))
-                # loss_hr_mae.append(float(train_mae))
+                loss_rPPG_avg.append(float(loss_rPPG.data))
+                loss_peak_avg.append(float(fre_loss.data))
+                loss_kl_avg_test.append(float(kl_loss.data))
+                loss_hr_mae.append(float(train_mae))
                 loss_spo2_rmse.append(float(loss.data))
-                if idx % 100 == 99:  # print every 100 mini-batches
-                    print(f'\nepoch:{epoch}, batch:{idx + 1}, total:{len(data_loader["train"]) // self.batch_size}, '
-                        f'lr:0.0001, sharp:{gra_sharp:.3f}, RMSE:{np.mean(loss_spo2_rmse):.4f}, ')
+                # if idx % 100 == 99:  # print every 100 mini-batches
+                #     print(f'\nepoch:{epoch}, batch:{idx + 1}, total:{len(data_loader["train"]) // self.batch_size}, '
+                #         f'lr:0.0001, sharp:{gra_sharp:.3f}, RMSE:{np.mean(loss_spo2_rmse):.4f}, ')
                     
             # Append the current learning rate to the list
             lrs.append(self.scheduler.get_last_lr())
@@ -176,6 +180,8 @@ class PhysFormerTrainer(BaseTrainer):
 
             if not self.config.TEST.USE_LAST_EPOCH: 
                 valid_loss = self.valid(data_loader)
+                print(valid_loss)
+                valid_loss = valid_loss[0]+valid_loss[1]
                 mean_valid_losses.append(valid_loss)
                 print(f'Validation RMSE:{valid_loss:.3f}, batch:{idx+1}')
                 if self.min_valid_loss is None:
@@ -202,26 +208,33 @@ class PhysFormerTrainer(BaseTrainer):
         self.optimizer.zero_grad()
         with torch.no_grad():
             spo2_errors = []  # To store squared differences for RMSE calculation
-            vbar = tqdm(data_loader["valid"], ncols=80)
+            hrs = []
+            vbar = tqdm(data_loader["valid"], ncols=100)
             
             for val_idx, val_batch in enumerate(vbar):
                 data, label = val_batch[0].float().to(self.device), val_batch[1].float().to(self.device)
                 
                 gra_sharp = 2.0
-                rspo2 = self.model(data, gra_sharp)
+                rPPG, rspo2 = self.model(data, gra_sharp)
+                rPPG = (rPPG-torch.mean(rPPG, axis=-1).view(-1, 1))/torch.std(rPPG).view(-1, 1)
+                hr_label = np.squeeze(label[:, 0:1, :])
+                spo2_label = np.squeeze(label[:, 1:2, :])
+                for _1, _2 in zip(rPPG, spo2_label):
+                    hrs.append((self.get_hr(_1.cpu().detach().numpy()), self.get_hr(_2.cpu().detach().numpy())))
                 
                 # for predicted_spo2, actual_spo2 in zip(rspo2, label):
                 #     spo2_errors.append((predicted_spo2.item() - actual_spo2.item()) ** 2)
 
                 for bb in range(data.shape[0]):
-                    rspo2_value = torch.tensor(rspo2[bb].item(), device=label[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
-                    label_value = label[bb].mean().float()
+                    rspo2_value = torch.tensor(rspo2[bb].item(), device=spo2_label[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
+                    label_value = spo2_label[bb].mean().float()
                     spo2_errors.append(F.mse_loss(rspo2_value, label_value))
-
-            spo2_errors_tensor = torch.stack(spo2_errors)  # Stack into a single tensor
-            RMSE = torch.sqrt(spo2_errors_tensor.mean())
             
-        return RMSE
+            spo2_errors_tensor = torch.stack(spo2_errors)  # Stack into a single tensor
+            spo2_RMSE = torch.sqrt(spo2_errors_tensor.mean())
+            hr_RMSE = np.mean([(i-j)**2 for i, j in hrs])**0.5
+            
+        return hr_RMSE, spo2_RMSE
 
     def test(self, data_loader):
         """ Runs the model on test sets."""
