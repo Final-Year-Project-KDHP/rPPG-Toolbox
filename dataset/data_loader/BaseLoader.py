@@ -276,65 +276,60 @@ class BaseLoader(Dataset):
             use_larger_box(bool): whether to use a larger bounding box on face detection.
             larger_box_coef(float): Coef. of larger box.
         Returns:
-            face_box_coor(List[int]): coordinates of face bouding box.
+            face_box_coor(List[int]): coordinates of face bounding box.
         """
         if backend == "HC":
-            # Use OpenCV's Haar Cascade algorithm implementation for face detection
-            # This should only utilize the CPU
-            detector = cv2.CascadeClassifier(
-            './dataset/haarcascade_frontalface_default.xml')
-
-            # Computed face_zone(s) are in the form [x_coord, y_coord, width, height]
-            # (x,y) corresponds to the top-left corner of the zone to define using
-            # the computed width and height.
+            # OpenCV's Haar Cascade face detection
+            detector = cv2.CascadeClassifier('./dataset/haarcascade_frontalface_default.xml')
             face_zone = detector.detectMultiScale(frame)
 
             if len(face_zone) < 1:
                 print("ERROR: No Face Detected")
                 face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
             elif len(face_zone) >= 2:
-                # Find the index of the largest face zone
-                # The face zones are boxes, so the width and height are the same
-                max_width_index = np.argmax(face_zone[:, 2])  # Index of maximum width
+                max_width_index = np.argmax(face_zone[:, 2])  # Index of the largest face
                 face_box_coor = face_zone[max_width_index]
-                print("Warning: More than one faces are detected. Only cropping the biggest one.")
+                print("Warning: More than one face detected. Cropping the largest one.")
             else:
                 face_box_coor = face_zone[0]
         elif backend == "RF":
-            # Use a TensorFlow-based RetinaFace implementation for face detection
-            # This utilizes both the CPU and GPU
+            # RetinaFace face detection
             res = RetinaFace.detect_faces(frame)
-
-            if len(res) > 0:
-                # Pick the highest score
-                highest_score_face = max(res.values(), key=lambda x: x['score'])
-                face_zone = highest_score_face['facial_area']
-
-                # This implementation of RetinaFace returns a face_zone in the
-                # form [x_min, y_min, x_max, y_max] that corresponds to the 
-                # corners of a face zone
-                x_min, y_min, x_max, y_max = face_zone
-
-                # Convert to this toolbox's expected format
-                # Expected format: [x_coord, y_coord, width, height]
-                x = x_min
-                y = y_min
-                width = x_max - x_min
-                height = y_max - y_min
-
-                # Find the center of the face zone
-                center_x = x + width // 2
-                center_y = y + height // 2
-                
-                # Determine the size of the square (use the maximum of width and height)
-                square_size = max(width, height)
-                
-                # Calculate the new coordinates for a square face zone
-                new_x = center_x - (square_size // 2)
-                new_y = center_y - (square_size // 2)
-                face_box_coor = [new_x, new_y, square_size, square_size]
+            if isinstance(res, tuple):
+                # Handle tuple output
+                try:
+                    bounding_boxes, scores = res  # Adjust if tuple structure differs
+                    if len(bounding_boxes) > 0:
+                        highest_score_face_idx = np.argmax(scores)
+                        face_zone = bounding_boxes[highest_score_face_idx]
+                        x_min, y_min, x_max, y_max = face_zone
+                        x = x_min
+                        y = y_min
+                        width = x_max - x_min
+                        height = y_max - y_min
+                        face_box_coor = [x, y, width, height]
+                    else:
+                        print("ERROR: No Face Detected")
+                        face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
+                except ValueError:
+                    print("ERROR: Unexpected tuple structure from RetinaFace.detect_faces()")
+                    face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
+            elif isinstance(res, dict):
+                # Original dictionary output handling
+                if len(res) > 0:
+                    highest_score_face = max(res.values(), key=lambda x: x['score'])
+                    face_zone = highest_score_face['facial_area']
+                    x_min, y_min, x_max, y_max = face_zone
+                    x = x_min
+                    y = y_min
+                    width = x_max - x_min
+                    height = y_max - y_min
+                    face_box_coor = [x, y, width, height]
+                else:
+                    print("ERROR: No Face Detected")
+                    face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
             else:
-                print("ERROR: No Face Detected")
+                print("ERROR: Unexpected return type from RetinaFace.detect_faces()")
                 face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
         else:
             raise ValueError("Unsupported face detection backend!")
@@ -344,7 +339,9 @@ class BaseLoader(Dataset):
             face_box_coor[1] = max(0, face_box_coor[1] - (larger_box_coef - 1.0) / 2 * face_box_coor[3])
             face_box_coor[2] = larger_box_coef * face_box_coor[2]
             face_box_coor[3] = larger_box_coef * face_box_coor[3]
+        
         return face_box_coor
+
 
     def crop_face_resize(self, frames, use_face_detection, backend, use_larger_box, larger_box_coef, use_dynamic_detection, 
                          detection_freq, use_median_box, width, height):
