@@ -23,7 +23,36 @@ import pandas as pd
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from retinaface import RetinaFace   # Source code: https://github.com/serengil/retinaface
+import torch
 
+class NICUfaceY5FDetector:
+    def __init__(self, model_path, confidence_threshold=0.5, iou_threshold=0.4, device=None):
+        """
+        Initializes the NICUface-Y5F detector using YOLOv5-Face.
+        """
+        self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
+        self.model = torch.hub.load('ultralytics/yolov5', 'custom', path=model_path)
+        self.model.conf = confidence_threshold  # Set confidence threshold
+        self.model.iou = iou_threshold          # Set IoU threshold
+        self.model.to(self.device)
+
+    def detect_faces(self, frame):
+        """
+        Detects faces in an image frame using NICUface-Y5F.
+
+        Args:
+            frame (np.array): Input image.
+
+        Returns:
+            List[dict]: A list of detected faces with bounding boxes and confidence scores.
+        """
+        results = self.model(frame)
+        detections = []
+        for *box, conf, cls in results.xyxy[0].tolist():
+            if cls == 0:  # Assuming class 0 corresponds to 'face' in NICUface-Y5F
+                x_min, y_min, x_max, y_max = map(int, box)
+                detections.append({'box': [x_min, y_min, x_max, y_max], 'confidence': conf})
+        return detections
 
 class BaseLoader(Dataset):
     """The base class for data loading based on pytorch Dataset.
@@ -59,6 +88,14 @@ class BaseLoader(Dataset):
         self.data_format = config_data.DATA_FORMAT
         self.do_preprocess = config_data.DO_PREPROCESS
         self.config_data = config_data
+        self.yolo_detector = None
+        if config_data.PREPROCESS.CROP_FACE.BACKEND == "YOLOv5":
+            self.yolo_detector = NICUfaceY5FDetector(
+                model_path="/content/rPPG-Toolbox/nicuface_y5f (1).pt",
+                confidence_threshold=0.5,
+                iou_threshold=0.4,
+                
+            )
 
         assert (config_data.BEGIN < config_data.END)
         assert (config_data.BEGIN > 0 or config_data.BEGIN == 0)
@@ -268,83 +305,93 @@ class BaseLoader(Dataset):
         return frames_clips, hr_bvps_clips, spo2_bvps_clips
 
     def face_detection(self, frame, backend, use_larger_box=False, larger_box_coef=1.0):
-        """Face detection on a single frame.
+      """Face detection on a single frame.
 
-        Args:
-            frame(np.array): a single frame.
-            backend(str): backend to utilize for face detection.
-            use_larger_box(bool): whether to use a larger bounding box on face detection.
-            larger_box_coef(float): Coef. of larger box.
-        Returns:
-            face_box_coor(List[int]): coordinates of face bouding box.
-        """
-        if backend == "HC":
-            # Use OpenCV's Haar Cascade algorithm implementation for face detection
-            # This should only utilize the CPU
-            detector = cv2.CascadeClassifier(
-            './dataset/haarcascade_frontalface_default.xml')
+      Args:
+          frame(np.array): a single frame.
+          backend(str): backend to utilize for face detection.
+          use_larger_box(bool): whether to use a larger bounding box on face detection.
+          larger_box_coef(float): Coef. of larger box.
+      Returns:
+          face_box_coor(List[int]): coordinates of face bounding box.
+      """
+      if backend == "YOLOv5":
+            if self.yolo_detector is None:
+                raise ValueError("YOLOv5 detector is not initialized.")
+            detections = self.yolo_detector.detect_faces(frame)
+            if not detections:
+                print("ERROR: No Face Detected by YOLOv5")
+                return [0, 0, frame.shape[1], frame.shape[0]]
 
-            # Computed face_zone(s) are in the form [x_coord, y_coord, width, height]
-            # (x,y) corresponds to the top-left corner of the zone to define using
-            # the computed width and height.
-            face_zone = detector.detectMultiScale(frame)
+            # Use the largest detection (or first one if no criteria)
+            best_detection = detections[0]
+            x_min, y_min, x_max, y_max = best_detection['box']
+            face_box_coor = [x_min, y_min, x_max - x_min, y_max - y_min]
+      if backend == "HC":
+          # Use OpenCV's Haar Cascade algorithm implementation for face detection
+          detector = cv2.CascadeClassifier('./dataset/haarcascade_frontalface_default.xml')
+          face_zone = detector.detectMultiScale(frame)
 
-            if len(face_zone) < 1:
-                print("ERROR: No Face Detected")
-                face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
-            elif len(face_zone) >= 2:
-                # Find the index of the largest face zone
-                # The face zones are boxes, so the width and height are the same
-                max_width_index = np.argmax(face_zone[:, 2])  # Index of maximum width
-                face_box_coor = face_zone[max_width_index]
-                print("Warning: More than one faces are detected. Only cropping the biggest one.")
-            else:
-                face_box_coor = face_zone[0]
-        elif backend == "RF":
-            # Use a TensorFlow-based RetinaFace implementation for face detection
-            # This utilizes both the CPU and GPU
-            res = RetinaFace.detect_faces(frame)
-            print("Type of res:", type(res)) 
-            if len(res) > 0:
-                # Pick the highest score
-                highest_score_face = max(res.values(), key=lambda x: x['score'])
-                face_zone = highest_score_face['facial_area']
+          if len(face_zone) < 1:
+              print("ERROR: No Face Detected")
+              face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
+          elif len(face_zone) >= 2:
+              max_width_index = np.argmax(face_zone[:, 2])  # Index of the largest face
+              face_box_coor = face_zone[max_width_index]
+              print("Warning: More than one face detected. Cropping the largest one.")
+          else:
+              face_box_coor = face_zone[0]
+      elif backend == "RF":
+          # Use RetinaFace for face detection
+          res = RetinaFace.detect_faces(frame)
+          print("Type of res:", type(res))  # Debug: Print the type of `res`
+          if isinstance(res, tuple):
+              if len(res)>= 2:  # Assume tuple contains (bounding_boxes, scores)
+                  print("First element:", res[0])
+                  print("Second element:", res[1])
+                  bounding_boxes, scores = res
+                  if len(bounding_boxes) > 0:
+                      # Pick the bounding box with the highest score
+                      highest_score_idx = np.argmax(scores)
+                      face_zone = bounding_boxes[highest_score_idx]
+                      x_min, y_min, x_max, y_max = face_zone
+                      x = x_min
+                      y = y_min
+                      width = x_max - x_min
+                      height = y_max - y_min
+                      face_box_coor = [x, y, width, height]
+                  else:
+                      print("No faces detected in tuple.")
+                      face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
+              else:
+                  print("Unexpected tuple structure:", res)
+                  face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
+          elif isinstance(res, dict):
+              if len(res) > 0:
+                  highest_score_face = max(res.values(), key=lambda x: x['score'])
+                  face_zone = highest_score_face['facial_area']
+                  x_min, y_min, x_max, y_max = face_zone
+                  x = x_min
+                  y = y_min
+                  width = x_max - x_min
+                  height = y_max - y_min
+                  face_box_coor = [x, y, width, height]
+              else:
+                  print("Empty dictionary: No faces detected.")
+                  face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
+          else:
+              print("ERROR: Unexpected return type from RetinaFace.detect_faces():", type(res))
+              face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
+      else:
+          raise ValueError("Unsupported face detection backend!")
 
-                # This implementation of RetinaFace returns a face_zone in the
-                # form [x_min, y_min, x_max, y_max] that corresponds to the 
-                # corners of a face zone
-                x_min, y_min, x_max, y_max = face_zone
+      if use_larger_box:
+          face_box_coor[0] = max(0, face_box_coor[0] - (larger_box_coef - 1.0) / 2 * face_box_coor[2])
+          face_box_coor[1] = max(0, face_box_coor[1] - (larger_box_coef - 1.0) / 2 * face_box_coor[3])
+          face_box_coor[2] = larger_box_coef * face_box_coor[2]
+          face_box_coor[3] = larger_box_coef * face_box_coor[3]
+      return face_box_coor
 
-                # Convert to this toolbox's expected format
-                # Expected format: [x_coord, y_coord, width, height]
-                x = x_min
-                y = y_min
-                width = x_max - x_min
-                height = y_max - y_min
-
-                # Find the center of the face zone
-                center_x = x + width // 2
-                center_y = y + height // 2
-                
-                # Determine the size of the square (use the maximum of width and height)
-                square_size = max(width, height)
-                
-                # Calculate the new coordinates for a square face zone
-                new_x = center_x - (square_size // 2)
-                new_y = center_y - (square_size // 2)
-                face_box_coor = [new_x, new_y, square_size, square_size]
-            else:
-                print("ERROR: No Face Detected")
-                face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
-        else:
-            raise ValueError("Unsupported face detection backend!")
-
-        if use_larger_box:
-            face_box_coor[0] = max(0, face_box_coor[0] - (larger_box_coef - 1.0) / 2 * face_box_coor[2])
-            face_box_coor[1] = max(0, face_box_coor[1] - (larger_box_coef - 1.0) / 2 * face_box_coor[3])
-            face_box_coor[2] = larger_box_coef * face_box_coor[2]
-            face_box_coor[3] = larger_box_coef * face_box_coor[3]
-        return face_box_coor
 
     def crop_face_resize(self, frames, use_face_detection, backend, use_larger_box, larger_box_coef, use_dynamic_detection, 
                          detection_freq, use_median_box, width, height):
