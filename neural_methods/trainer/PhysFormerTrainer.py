@@ -219,7 +219,7 @@ class PhysFormerTrainer(BaseTrainer):
                 rPPG = (rPPG-torch.mean(rPPG, axis=-1).view(-1, 1))/torch.std(rPPG).view(-1, 1)
                 hr_label = np.squeeze(label[:, 0:1, :])
                 spo2_label = np.squeeze(label[:, 1:2, :])
-                for _1, _2 in zip(rPPG, spo2_label):
+                for _1, _2 in zip(rPPG, hr_label):
                     hrs.append((self.get_hr(_1.cpu().detach().numpy()), self.get_hr(_2.cpu().detach().numpy())))
                 
                 # for predicted_spo2, actual_spo2 in zip(rspo2, label):
