@@ -283,8 +283,12 @@ class BaseLoader(Dataset):
       Returns:
           face_box_coor(List[int]): coordinates of face bounding box.
       """
+      print(f"Invalid backend '{backend}'. Defaulting to YOLOv5.")
+      #backend= "YOLOv5"
       if backend == "YOLOv5":
-        model = YoloDetector(target_size=self.config_preprocess.RESIZE.H, device="cpu", min_face=90)
+        frame_height, frame_width = frame.shape[:2]
+        target_size = min(frame_height, frame_width)
+        model = YoloDetector(target_size=128, device="cpu", min_face=90)
         bboxes, points = model.predict(frame)
         
         if len(bboxes) == 0:
@@ -292,7 +296,7 @@ class BaseLoader(Dataset):
             face_box_coor = [0, 0, frame.shape[1], frame.shape[0]]  # Use entire frame as fallback
         else:
             face_box_coor = bboxes[0]  # Use the first detected bounding box
-      if backend == "HC":
+      elif backend == "HC":
           # Use OpenCV's Haar Cascade algorithm implementation for face detection
           detector = cv2.CascadeClassifier('./dataset/haarcascade_frontalface_default.xml')
           face_zone = detector.detectMultiScale(frame)
