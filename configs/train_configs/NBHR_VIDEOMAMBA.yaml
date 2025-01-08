@@ -24,7 +24,7 @@ TRAIN:
       CHUNK_LENGTH: 128                 #only support for factor of 512
       CROP_FACE:
         DO_CROP_FACE: True
-        BACKEND: 'RF'    # HC for Haar Cascade, RF for RetinaFace
+        BACKEND: 'YOLOv5'    # HC for Haar Cascade, RF for RetinaFace, YOLOv5 for YOLOv5
         USE_LARGE_FACE_BOX: True
         LARGE_BOX_COEF: 1.5
         DETECTION:

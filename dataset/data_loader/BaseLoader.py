@@ -24,35 +24,10 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 from retinaface import RetinaFace   # Source code: https://github.com/serengil/retinaface
 import torch
+import sys
+sys.path.append("/content/yoloface")
+from face_detector import YoloDetector
 
-class NICUfaceY5FDetector:
-    def __init__(self, model_path, confidence_threshold=0.5, iou_threshold=0.4, device=None):
-        """
-        Initializes the NICUface-Y5F detector using YOLOv5-Face.
-        """
-        self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
-        self.model = torch.hub.load('ultralytics/yolov5', 'custom', path=model_path)
-        self.model.conf = confidence_threshold  # Set confidence threshold
-        self.model.iou = iou_threshold          # Set IoU threshold
-        self.model.to(self.device)
-
-    def detect_faces(self, frame):
-        """
-        Detects faces in an image frame using NICUface-Y5F.
-
-        Args:
-            frame (np.array): Input image.
-
-        Returns:
-            List[dict]: A list of detected faces with bounding boxes and confidence scores.
-        """
-        results = self.model(frame)
-        detections = []
-        for *box, conf, cls in results.xyxy[0].tolist():
-            if cls == 0:  # Assuming class 0 corresponds to 'face' in NICUface-Y5F
-                x_min, y_min, x_max, y_max = map(int, box)
-                detections.append({'box': [x_min, y_min, x_max, y_max], 'confidence': conf})
-        return detections
 
 class BaseLoader(Dataset):
     """The base class for data loading based on pytorch Dataset.
@@ -89,13 +64,6 @@ class BaseLoader(Dataset):
         self.do_preprocess = config_data.DO_PREPROCESS
         self.config_data = config_data
         self.yolo_detector = None
-        if config_data.PREPROCESS.CROP_FACE.BACKEND == "YOLOv5":
-            self.yolo_detector = NICUfaceY5FDetector(
-                model_path="/content/rPPG-Toolbox/nicuface_y5f (1).pt",
-                confidence_threshold=0.5,
-                iou_threshold=0.4,
-                
-            )
 
         assert (config_data.BEGIN < config_data.END)
         assert (config_data.BEGIN > 0 or config_data.BEGIN == 0)
@@ -316,17 +284,14 @@ class BaseLoader(Dataset):
           face_box_coor(List[int]): coordinates of face bounding box.
       """
       if backend == "YOLOv5":
-            if self.yolo_detector is None:
-                raise ValueError("YOLOv5 detector is not initialized.")
-            detections = self.yolo_detector.detect_faces(frame)
-            if not detections:
-                print("ERROR: No Face Detected by YOLOv5")
-                return [0, 0, frame.shape[1], frame.shape[0]]
-
-            # Use the largest detection (or first one if no criteria)
-            best_detection = detections[0]
-            x_min, y_min, x_max, y_max = best_detection['box']
-            face_box_coor = [x_min, y_min, x_max - x_min, y_max - y_min]
+        model = YoloDetector(target_size=self.config_preprocess.RESIZE.H, device="cpu", min_face=90)
+        bboxes, points = model.predict(frame)
+        
+        if len(bboxes) == 0:
+            print("ERROR: No Face Detected")
+            face_box_coor = [0, 0, frame.shape[1], frame.shape[0]]  # Use entire frame as fallback
+        else:
+            face_box_coor = bboxes[0]  # Use the first detected bounding box
       if backend == "HC":
           # Use OpenCV's Haar Cascade algorithm implementation for face detection
           detector = cv2.CascadeClassifier('./dataset/haarcascade_frontalface_default.xml')
