@@ -287,14 +287,15 @@ class BaseLoader(Dataset):
       #backend= "YOLOv5"
       if backend == "YOLOv5":
         frame_height, frame_width = frame.shape[:2]
-        target_size = min(frame_height, frame_width)
-        model = YoloDetector(
-    weights_name='nicuface_y5f_state_dict.pt', 
-    config_name='yolov5l.yaml',
-    target_size=target_size,     # or another size that works for you
-    device='cpu',        # or 'cuda:0'
-    min_face=90
-)
+#         target_size = min(frame_height, frame_width)
+#         model = YoloDetector(
+#     weights_name='nicuface_y5f_state_dict.pt', 
+#     config_name='yolov5l.yaml',
+#     target_size=target_size,     # or another size that works for you
+#     device='cpu',        # or 'cuda:0'
+#     min_face=90
+# )     
+        model = YoloDetector(target_size=None,device='cpu', min_face=90)
         bboxes, points = model.predict(frame)
         print(bboxes[0])
         
@@ -502,7 +503,7 @@ class BaseLoader(Dataset):
             count += 1
         return input_path_name_list, label_path_name_list
 
-    def multi_process_manager(self, data_dirs, config_preprocess, multi_process_quota=8):
+    def multi_process_manager(self, data_dirs, config_preprocess, multi_process_quota=4):
         """Allocate dataset preprocessing across multiple processes.
 
         Args:
