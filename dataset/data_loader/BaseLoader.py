@@ -215,7 +215,7 @@ class BaseLoader(Dataset):
         self.load_preprocessed_data()  # load all data and corresponding labels (sorted for consistency)
         print("Total Number of raw files preprocessed:", len(data_dirs_split), end='\n\n')
 
-    def preprocess(self, frames, hr_bvps, spo2_bvps, config_preprocess):
+    def preprocess(self, frames, hr_bvps, spo2_bvps, config_preprocess, filename):
         """Preprocesses a pair of data.
 
         Args:
@@ -237,7 +237,7 @@ class BaseLoader(Dataset):
             config_preprocess.CROP_FACE.DETECTION.DYNAMIC_DETECTION_FREQUENCY,
             config_preprocess.CROP_FACE.DETECTION.USE_MEDIAN_FACE_BOX,
             config_preprocess.RESIZE.W,
-            config_preprocess.RESIZE.H)
+            config_preprocess.RESIZE.H, filename)
         # Check data transformation type
         data = list()  # Video data
         for data_type in config_preprocess.DATA_TYPE:
@@ -272,7 +272,7 @@ class BaseLoader(Dataset):
 
         return frames_clips, hr_bvps_clips, spo2_bvps_clips
 
-    def face_detection(self, frame, backend, use_larger_box=False, larger_box_coef=1.0):
+    def face_detection(self, frame, backend, use_larger_box=False, larger_box_coef=1.0, filename=None):
       """Face detection on a single frame.
 
       Args:
@@ -295,14 +295,27 @@ class BaseLoader(Dataset):
 #     device='cpu',        # or 'cuda:0'
 #     min_face=90
 # )     
-        model = YoloDetector(target_size=None,device='cpu', min_face=90)
+        model = YoloDetector(target_size=None,device='cpu', min_face=80)
         bboxes, points = model.predict(frame)
-        print(bboxes[0])
+        # print(bboxes[0])
         
         if len(bboxes[0]) == 0:
-            print("ERROR: No Face Detected")
-            face_box_coor = [0, 0, frame.shape[1], frame.shape[0]]  # Use entire frame as fallback
+            # print(f"ERROR: No Face Detected in {filename}")
+            right_rotated_frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+            bboxes, points = model.predict(right_rotated_frame)
+            if len(bboxes[0]) == 0:
+                left_rotated_frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                bboxes, points = model.predict(left_rotated_frame)
+                if len(bboxes[0]) == 0:
+                    return 0
+                else:
+                    face_box_coor = bboxes[0][0]
+            else:
+                face_box_coor = bboxes[0][0]
+            # return 0
+            # face_box_coor = [0, 0, frame.shape[1], frame.shape[0]]  # Use entire frame as fallback
         else:
+            # print(f"Face Detected in {filename}")
             face_box_coor = bboxes[0][0] # Use the first detected bounding box
       elif backend == "HC":
           # Use OpenCV's Haar Cascade algorithm implementation for face detection
@@ -363,7 +376,7 @@ class BaseLoader(Dataset):
           raise ValueError("Unsupported face detection backend!")
 
       if use_larger_box:
-          print(len(face_box_coor))
+          # print(len(face_box_coor))
           face_box_coor[0] = max(0, face_box_coor[0] - (larger_box_coef - 1.0) / 2 * face_box_coor[2])
           face_box_coor[1] = max(0, face_box_coor[1] - (larger_box_coef - 1.0) / 2 * face_box_coor[3])
           face_box_coor[2] = larger_box_coef * face_box_coor[2]
@@ -372,7 +385,7 @@ class BaseLoader(Dataset):
 
 
     def crop_face_resize(self, frames, use_face_detection, backend, use_larger_box, larger_box_coef, use_dynamic_detection, 
-                         detection_freq, use_median_box, width, height):
+                         detection_freq, use_median_box, width, height, filename):
         """Crop face and resize frames.
 
         Args:
@@ -390,18 +403,30 @@ class BaseLoader(Dataset):
         Returns:
             resized_frames(list[np.array(float)]): Resized and cropped frames
         """
+        # If not detected, turn on dynamic detection
+        box_coor = self.face_detection(frames[0], backend, use_larger_box, larger_box_coef, filename)
+        if box_coor == 0:
+            print(f"Using Dynamic detection for {filename}")
+            use_dynamic_detection = True
         # Face Cropping
         if use_dynamic_detection:
             num_dynamic_det = ceil(frames.shape[0] / detection_freq)
         else:
             num_dynamic_det = 1
         face_region_all = []
+
         # Perform face detection by num_dynamic_det" times.
         for idx in range(num_dynamic_det):
             if use_face_detection:
-                face_region_all.append(self.face_detection(frames[detection_freq * idx], backend, use_larger_box, larger_box_coef))
+                box_coor = self.face_detection(frames[detection_freq * idx], backend, use_larger_box, larger_box_coef, filename)
+                if box_coor != 0:
+                    face_region_all.append(box_coor)
+                    break
             else:
                 face_region_all.append([0, 0, frames.shape[1], frames.shape[2]])
+        if not face_region_all:
+            print(f"ERROR: Face not Detected in {filename}")
+            face_region_all.append([0, 0, frames.shape[1], frames.shape[2]])
         face_region_all = np.asarray(face_region_all, dtype='int')
         if use_median_box:
             # Generate a median bounding box based on all detected face regions
