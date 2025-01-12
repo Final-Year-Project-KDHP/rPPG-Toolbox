@@ -191,19 +191,22 @@ class PhysnetTrainer(BaseTrainer):
         self.model.eval()
         print("Running model evaluation on the testing dataset!")
         test_loss = []
+        rspo2_values = []
+        label_values = []
         with torch.no_grad():
             for _, test_batch in enumerate(tqdm(data_loader["test"], ncols=80)):
                 batch_size = test_batch[0].shape[0]
                 data, label = test_batch[0].to(
                     self.config.DEVICE), test_batch[1].to(self.config.DEVICE)
                 rspo2, _, _, _ = self.model(data)
-
+                # print(label.ndim)
+                if label.ndim == 3:
+                    label = np.squeeze(label[:, 1:2, :])
+                # print(label)
                 if self.config.TEST.OUTPUT_SAVE_DIR:
                     label = label.cpu()
                     rspo2 = rspo2.cpu()
 
-                rspo2_values = []
-                label_values = []
                 for idx in range(batch_size):
                     subj_index = test_batch[2][idx]
                     sort_index = int(test_batch[3][idx])
@@ -215,7 +218,7 @@ class PhysnetTrainer(BaseTrainer):
                     rspo2_value = torch.tensor(rspo2[idx].item(), device=label[idx].device) if not isinstance(rspo2[idx], torch.Tensor) else rspo2[idx]
                     rounded_value = round(rspo2_value.item())
                     rspo2_value = torch.tensor(rounded_value, device=rspo2_value.device)
-                    label_value = label[idx].mean().float()
+                    label_value = label[idx].mean().float().round()
 
                     rspo2_values.append(rspo2_value.item())
                     label_values.append(label_value.item())
@@ -226,6 +229,8 @@ class PhysnetTrainer(BaseTrainer):
         print('')
         spo2_errors_tensor = torch.stack(test_loss)  # Stack into a single tensor
         RMSE = torch.sqrt(spo2_errors_tensor.mean())
+        print(rspo2_values)
+        print(label_values)
         print("RMSE:", RMSE.item(), "\nPredicted SpO2 value:", np.mean(rspo2_values), "\nGround Truth value:", np.mean(label_values))
         # calculate_metrics(predictions, labels, self.config)
         # if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs 
