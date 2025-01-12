@@ -309,9 +309,9 @@ class BaseLoader(Dataset):
                 if len(bboxes[0]) == 0:
                     return 0
                 else:
-                    face_box_coor = bboxes[0][0]
+                    face_box_coor = [bboxes[0][0][1], frame_height-bboxes[0][0][2], bboxes[0][0][3], frame_height-bboxes[0][0][0]]
             else:
-                face_box_coor = bboxes[0][0]
+                face_box_coor = [frame_width-bboxes[0][0][3], bboxes[0][0][0], frame_width-bboxes[0][0][1], bboxes[0][0][2]]
             # return 0
             # face_box_coor = [0, 0, frame.shape[1], frame.shape[0]]  # Use entire frame as fallback
         else:
