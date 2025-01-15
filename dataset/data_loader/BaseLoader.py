@@ -73,6 +73,7 @@ class BaseLoader(Dataset):
                                  'Please set DO_PREPROCESS to True. Preprocessed directory does not exist!')
             if not os.path.exists(self.file_list_path):
                 print('File list does not exist... generating now...')
+                print(self.file_list_path)
                 self.raw_data_dirs = self.get_raw_data(self.raw_data_path)
                 self.build_file_list_retroactive(self.raw_data_dirs, config_data.BEGIN, config_data.END)
                 print('File list generated.', end='\n\n')
@@ -598,6 +599,7 @@ class BaseLoader(Dataset):
         self.inputs = inputs
         self.labels = labels
         self.preprocessed_data_len = len(inputs)
+       
 
     @staticmethod
     def diff_normalize_data(data):

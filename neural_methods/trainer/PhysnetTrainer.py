@@ -70,8 +70,12 @@ class PhysnetTrainer(BaseTrainer):
             tbar = tqdm(data_loader["train"], ncols=80)
             for idx, batch in enumerate(tbar):
                 tbar.set_description("Train epoch %s" % epoch)
-                data, label = batch[0].to(torch.float32).to(self.device), batch[1].to(torch.float32).to(self.device)
-                rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data)
+                data, label,filename = batch[0].to(torch.float32).to(self.device), batch[1].to(torch.float32).to(self.device),batch[2]
+                print(filename)
+                label= np.squeeze(label[:,1:2,:],axis=1)
+                # print(label.shape)
+                rspo2,x_visual, x_visual3232, x_visual1616 = self.model(data)
+                print(rspo2)
                 # rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
                 # BVP_label = (BVP_label - torch.mean(BVP_label)) / \
                             # torch.std(BVP_label)  # normalize
@@ -136,6 +140,7 @@ class PhysnetTrainer(BaseTrainer):
             for valid_idx, valid_batch in enumerate(vbar):
                 vbar.set_description("Validation")
                 data, label = valid_batch[0].to(torch.float32).to(self.device), valid_batch[1].to(torch.float32).to(self.device)
+                label= np.squeeze(label[:,1:2,:],axis=1)
                 # BVP_label = valid_batch[1].to(
                 #     torch.float32).to(self.device)
                 rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data)
@@ -198,6 +203,7 @@ class PhysnetTrainer(BaseTrainer):
                 batch_size = test_batch[0].shape[0]
                 data, label = test_batch[0].to(
                     self.config.DEVICE), test_batch[1].to(self.config.DEVICE)
+                label= np.squeeze(label[:,1:2,:],axis=1)
                 rspo2, _, _, _ = self.model(data)
                 # print(label.ndim)
                 if label.ndim == 3:

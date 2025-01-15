@@ -39,7 +39,6 @@ def add_args(parser):
     """Adds arguments for parser."""
     parser.add_argument('--config_file', required=False,
                         default="configs/train_configs/PURE_PURE_UBFC-rPPG_TSCAN_BASIC.yaml", type=str, help="The name of the model.")
-    parser.add_argument('--vid_idx', required=False, default="0")
     '''Neural Method Sample YAML LIST:
       SCAMPS_SCAMPS_UBFC-rPPG_TSCAN_BASIC.yaml
       SCAMPS_SCAMPS_UBFC-rPPG_DEEPPHYS_BASIC.yaml
@@ -137,8 +136,8 @@ if __name__ == "__main__":
 
     # configurations.
     config = get_config(args)
-    # print('Configuration:')
-    # print(config, end='\n\n')
+    print('Configuration:')
+    print(config, end='\n\n')
 
     data_loader_dict = dict() # dictionary of data loaders 
     if config.TOOLBOX_MODE == "train_and_test":
@@ -161,6 +160,8 @@ if __name__ == "__main__":
             train_loader = data_loader.iBVPLoader.iBVPLoader
         elif config.TRAIN.DATA.DATASET == "VIPL-HR":
             train_loader = data_loader.VIPLLoader.VIPLLoader
+        elif config.TRAIN.DATA.DATASET == "NBHR":
+            train_loader = data_loader.NBHRLoader.NBHRLoader
         else:
             raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
                              SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP.")
@@ -206,6 +207,8 @@ if __name__ == "__main__":
             valid_loader = data_loader.VIPLLoader.VIPLLoader
         elif config.VALID.DATA.DATASET is None and not config.TEST.USE_LAST_EPOCH:
             raise ValueError("Validation dataset not specified despite USE_LAST_EPOCH set to False!")
+        elif config.TRAIN.DATA.DATASET == "NBHR":
+            valid_loader = data_loader.NBHRLoader.NBHRLoader
         else:
             raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
                              SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP")
@@ -246,9 +249,9 @@ if __name__ == "__main__":
             test_loader = data_loader.UBFCPHYSLoader.UBFCPHYSLoader
         elif config.TEST.DATA.DATASET == "iBVP":
             test_loader = data_loader.iBVPLoader.iBVPLoader
-        elif config.TEST.DATA.DATASET == "VIPL-HR":
+        elif config.TRAIN.DATA.DATASET == "VIPL-HR":
             test_loader = data_loader.VIPLLoader.VIPLLoader
-        elif config.TEST.DATA.DATASET == "NBHR":
+        elif config.TRAIN.DATA.DATASET == "NBHR":
             test_loader = data_loader.NBHRLoader.NBHRLoader
         else:
             raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
