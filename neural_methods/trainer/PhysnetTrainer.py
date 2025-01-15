@@ -1,4 +1,5 @@
 """PhysNet Trainer."""
+print
 import os
 from collections import OrderedDict
 
@@ -70,7 +71,10 @@ class PhysnetTrainer(BaseTrainer):
             for idx, batch in enumerate(tbar):
                 tbar.set_description("Train epoch %s" % epoch)
                 data, label = batch[0].to(torch.float32).to(self.device), batch[1].to(torch.float32).to(self.device)
-                rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data)
+                label= np.squeeze(label[:,1:2,:],axis=1)
+                # print(label.shape)
+                rspo2,x_visual, x_visual3232, x_visual1616 = self.model(data)
+                print(rspo2)
                 # rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
                 # BVP_label = (BVP_label - torch.mean(BVP_label)) / \
                             # torch.std(BVP_label)  # normalize
@@ -135,6 +139,7 @@ class PhysnetTrainer(BaseTrainer):
             for valid_idx, valid_batch in enumerate(vbar):
                 vbar.set_description("Validation")
                 data, label = valid_batch[0].to(torch.float32).to(self.device), valid_batch[1].to(torch.float32).to(self.device)
+                label= np.squeeze(label[:,1:2,:],axis=1)
                 # BVP_label = valid_batch[1].to(
                 #     torch.float32).to(self.device)
                 rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data)
@@ -169,34 +174,40 @@ class PhysnetTrainer(BaseTrainer):
         if self.config.TOOLBOX_MODE == "only_test":
             if not os.path.exists(self.config.INFERENCE.MODEL_PATH):
                 raise ValueError("Inference model path error! Please check INFERENCE.MODEL_PATH in your yaml.")
-            self.model.load_state_dict(torch.load(self.config.INFERENCE.MODEL_PATH)["model_state_dict"])
+            self.model.load_state_dict(torch.load(self.config.INFERENCE.MODEL_PATH))
             print("Testing uses pretrained model!")
-            print(self.config.INFERENCE.MODEL_PATH)
+            #print(self.config.INFERENCE.MODEL_PATH)
         else:
             if self.config.TEST.USE_LAST_EPOCH:
                 last_epoch_model_path = os.path.join(
                 self.model_dir, self.model_file_name + '_Epoch' + str(self.max_epoch_num - 1) + '.pth')
                 print("Testing uses last epoch as non-pretrained model!")
                 print(last_epoch_model_path)
-                self.model.load_state_dict(torch.load(last_epoch_model_path)["model_state_dict"])
+                self.model.load_state_dict(torch.load(last_epoch_model_path))
             else:
                 best_model_path = os.path.join(
                     self.model_dir, self.model_file_name + '_Epoch' + str(self.best_epoch) + '.pth')
                 print("Testing uses best epoch selected using model selection as non-pretrained model!")
                 print(best_model_path)
-                self.model.load_state_dict(torch.load(best_model_path)["model_state_dict"])
+                self.model.load_state_dict(torch.load(best_model_path))
 
         self.model = self.model.to(self.config.DEVICE)
         self.model.eval()
         print("Running model evaluation on the testing dataset!")
         test_loss = []
+        rspo2_values = []
+        label_values = []
         with torch.no_grad():
             for _, test_batch in enumerate(tqdm(data_loader["test"], ncols=80)):
                 batch_size = test_batch[0].shape[0]
                 data, label = test_batch[0].to(
                     self.config.DEVICE), test_batch[1].to(self.config.DEVICE)
+                label= np.squeeze(label[:,1:2,:],axis=1)
                 rspo2, _, _, _ = self.model(data)
-
+                # print(label.ndim)
+                if label.ndim == 3:
+                    label = np.squeeze(label[:, 1:2, :])
+                # print(label)
                 if self.config.TEST.OUTPUT_SAVE_DIR:
                     label = label.cpu()
                     rspo2 = rspo2.cpu()
@@ -208,18 +219,27 @@ class PhysnetTrainer(BaseTrainer):
                         predictions[subj_index] = dict()
                         labels[subj_index] = dict()
                     predictions[subj_index][sort_index] = rspo2[idx]
+
                     rspo2_value = torch.tensor(rspo2[idx].item(), device=label[idx].device) if not isinstance(rspo2[idx], torch.Tensor) else rspo2[idx]
-                    label_value = label[idx].mean().float()
+                    rounded_value = round(rspo2_value.item())
+                    rspo2_value = torch.tensor(rounded_value, device=rspo2_value.device)
+                    label_value = label[idx].mean().float().round()
+
+                    rspo2_values.append(rspo2_value.item())
+                    label_values.append(label_value.item())
+
                     test_loss.append(F.mse_loss(rspo2_value, label_value))
                     labels[subj_index][sort_index] = label[idx]
 
         print('')
         spo2_errors_tensor = torch.stack(test_loss)  # Stack into a single tensor
         RMSE = torch.sqrt(spo2_errors_tensor.mean())
-        print("RMSE:", RMSE)
+        print(rspo2_values)
+        print(label_values)
+        print("RMSE:", RMSE.item(), "\nPredicted SpO2 value:", np.mean(rspo2_values), "\nGround Truth value:", np.mean(label_values))
         # calculate_metrics(predictions, labels, self.config)
-        if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs 
-            self.save_test_outputs(predictions, labels, self.config)
+        # if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs 
+        #     self.save_test_outputs(predictions, labels, self.config)
 
     def save_model(self, index):
         if not os.path.exists(self.model_dir):
