@@ -68,40 +68,59 @@ class PhysnetTrainer(BaseTrainer):
             train_loss = []
             self.model.train()
             tbar = tqdm(data_loader["train"], ncols=80)
+            count=0
             for idx, batch in enumerate(tbar):
-                tbar.set_description("Train epoch %s" % epoch)
-                data, label,filename = batch[0].to(torch.float32).to(self.device), batch[1].to(torch.float32).to(self.device),batch[2]
-                print(filename)
-                label= np.squeeze(label[:,1:2,:],axis=1)
-                # print(label.shape)
-                rspo2,x_visual, x_visual3232, x_visual1616 = self.model(data)
-                print(rspo2)
-                # rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
-                # BVP_label = (BVP_label - torch.mean(BVP_label)) / \
-                            # torch.std(BVP_label)  # normalize
+              tbar.set_description(f"Train epoch {epoch}")
+              data, label, filename = batch[0].to(torch.float32).to(self.device), \
+                                      batch[1].to(torch.float32).to(self.device), \
+                                      batch[2]
+              label = np.squeeze(label[:, 1:2, :], axis=1)
 
-                rmse_loss = 0.0
-                for bb in range(data.shape[0]):
-                    rspo2_value = torch.tensor(rspo2[bb].item(), device=label[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
-                    label_value = label[bb].mean().float()
-                    rmse_loss = rmse_loss + torch.sqrt(F.mse_loss(rspo2_value, label_value))
-                rmse_loss /= data.shape[0]
-                loss = rmse_loss
-                loss.backward()
-                running_loss += loss.item()
-                if idx % 100 == 99:  # print every 100 mini-batches
-                    print(
-                        f'[{epoch}, {idx + 1:5d}] loss: {running_loss / 100:.3f}')
-                    running_loss = 0.0
-                train_loss.append(loss.item())
+              rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data)
+              #print("rspo2",rspo2)
+              # Check if rspo2 contains NaN values
+              # if torch.isnan(rspo2).any():
+              #     count += 1
+              #     print(f"NaN detected in rspo2 for batch {idx}. Skipping this batch.")
+              #     continue 
 
-                # Append the current learning rate to the list
-                lrs.append(self.scheduler.get_last_lr())
+              # Compute loss
+              rmse_loss = 0.0
+              for bb in range(data.shape[0]):
+                  rspo2_value = rspo2[bb] if isinstance(rspo2[bb], torch.Tensor) else torch.tensor(rspo2[bb].item(), device=label[bb].device)
+                  label_value = label[bb].mean().float()
+                  # if torch.isnan(rspo2).any() or torch.isnan(label).any():
+                  #     print(f"rspo2: {rspo2}, label: {label}")
+                  rmse_loss += torch.sqrt(F.mse_loss(rspo2_value, label_value))
+              rmse_loss /= data.shape[0]
 
-                self.optimizer.step()
-                self.scheduler.step()
-                self.optimizer.zero_grad()
-                tbar.set_postfix(loss=loss.item())
+              # Check if loss is NaN
+              if torch.isnan(rmse_loss):
+                  count += 1
+                  print(f"NaN detected in loss for batch {idx}. Skipping backpropagation.", rspo2,label_value)
+                  continue  # Skip this batch
+
+              # Backward pass
+              loss = rmse_loss
+              loss.backward()
+
+              # Check for NaN gradients
+              for param in self.model.parameters():
+                  if torch.isnan(param.grad).any():
+                      print("NaN detected in gradients. Skipping optimizer step.")
+                      self.optimizer.zero_grad()  # Reset gradients
+                      continue
+
+              running_loss += loss.item()
+              train_loss.append(loss.item())
+
+              # Optimizer step
+              self.optimizer.step()
+              self.scheduler.step()
+              self.optimizer.zero_grad()  # Reset gradients
+              tbar.set_postfix(loss=loss.item())
+            print("count : ",count)
+
 
             # Append the mean training loss for the epoch
             mean_training_losses.append(np.mean(train_loss))
@@ -119,6 +138,7 @@ class PhysnetTrainer(BaseTrainer):
                     self.min_valid_loss = valid_loss
                     self.best_epoch = epoch
                     print("Update best model! Best epoch: {}".format(self.best_epoch))
+            
         if not self.config.TEST.USE_LAST_EPOCH: 
             print("best trained epoch: {}, min_val_loss: {}".format(
                 self.best_epoch, self.min_valid_loss))
