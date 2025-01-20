@@ -195,9 +195,16 @@ class PhysnetTrainer(BaseTrainer):
         if self.config.TOOLBOX_MODE == "only_test":
             if not os.path.exists(self.config.INFERENCE.MODEL_PATH):
                 raise ValueError("Inference model path error! Please check INFERENCE.MODEL_PATH in your yaml.")
-            self.model.load_state_dict(torch.load(self.config.INFERENCE.MODEL_PATH))
+            
+            # Load the checkpoint
+            checkpoint = torch.load(self.config.INFERENCE.MODEL_PATH, map_location=self.device)
+            
+            # Check if the checkpoint is a dictionary and contains 'model_state_dict'
+            if "model_state_dict" in checkpoint:
+                self.model.load_state_dict(checkpoint["model_state_dict"])
+            else:
+                self.model.load_state_dict(checkpoint)  # Load directly if it's just state_dict
             print("Testing uses pretrained model!")
-            #print(self.config.INFERENCE.MODEL_PATH)
         else:
             if self.config.TEST.USE_LAST_EPOCH:
                 last_epoch_model_path = os.path.join(
