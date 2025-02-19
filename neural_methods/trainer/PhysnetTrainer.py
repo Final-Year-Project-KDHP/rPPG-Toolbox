@@ -70,8 +70,10 @@ class PhysnetTrainer(BaseTrainer):
                 BVP_label = (BVP_label - torch.mean(BVP_label)) / \
                             torch.std(BVP_label)  # normalize
                 loss = self.loss_model(rPPG, BVP_label)
-                if torch.isnan(loss):
-                    print(BVP_label)
+                if torch.isinf(loss) or torch.isnan(loss):
+                    print("Skip the batch")
+                    continue
+                
                 loss.backward()
                 running_loss += loss.item()
                 if idx % 100 == 99:  # print every 100 mini-batches
