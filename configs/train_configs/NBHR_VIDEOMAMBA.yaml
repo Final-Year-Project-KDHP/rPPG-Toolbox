@@ -36,7 +36,7 @@ TRAIN:
         W: 128
 VALID:
   DATA:
-    FS: 30
+    FS: 12
     DATASET: NBHR
     DO_PREPROCESS: False                # if first time, should be true
     DATA_FORMAT: NCDHW
@@ -67,9 +67,9 @@ TEST:
   METRICS: ['MAE', 'RMSE', 'MAPE', 'Pearson', 'SNR', 'BA']
   USE_LAST_EPOCH: False                   # to use provided validation dataset to find the best epoch, should be false
   DATA:
-    FS: 30
+    FS: 12
     DATASET: NBHR
-    DO_PREPROCESS: True                  # if first time, should be true
+    DO_PREPROCESS: False                  # if first time, should be true
     DATA_FORMAT: NCDHW
     DATA_PATH: "/content/drive/MyDrive/Datasets/NBHR"                     # Raw dataset path, need to be updated
     CACHED_PATH: "/content/drive/MyDrive/HR/PhysFormer/NBHR_standarized_label"    # Processed dataset save path, need to be updated
