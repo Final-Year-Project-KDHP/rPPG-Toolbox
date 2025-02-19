@@ -92,35 +92,46 @@ class BaseLoader(Dataset):
         return len(self.inputs)
 
     def __getitem__(self, index):
-        """Returns a clip of video(3,T,W,H) and it's corresponding signals(T)."""
-        data = np.load(self.inputs[index])
-        label = np.load(self.labels[index])
-        if self.data_format == 'NDCHW':
-            data = np.transpose(data, (0, 3, 1, 2))
-        elif self.data_format == 'NCDHW':
-            data = np.transpose(data, (3, 0, 1, 2))
-        elif self.data_format == 'NDHWC':
-            pass
-        else:
-            raise ValueError('Unsupported Data Format!')
-        data = np.float32(data)
-        label = np.float32(label)
-        # item_path is the location of a specific clip in a preprocessing output folder
-        # For example, an item path could be /home/data/PURE_SizeW72_...unsupervised/501_input0.npy
-        item_path = self.inputs[index]
-        # item_path_filename is simply the filename of the specific clip
-        # For example, the preceding item_path's filename would be 501_input0.npy
-        item_path_filename = item_path.split(os.sep)[-1]
-        # split_idx represents the point in the previous filename where we want to split the string 
-        # in order to retrieve a more precise filename (e.g., 501) preceding the chunk (e.g., input0)
-        split_idx = item_path_filename.rindex('_')
-        # Following the previous comments, the filename for example would be 501
-        filename = item_path_filename[:split_idx]
-        # chunk_id is the extracted, numeric chunk identifier. Following the previous comments, 
-        # the chunk_id for example would be 0
-        chunk_id = item_path_filename[split_idx + 6:].split('.')[0]
-        
-        return data, label, filename, chunk_id
+        """Returns a clip of video(3,T,W,H) and its corresponding signals(T)."""
+
+        max_attempts = len(self.inputs)  # Avoid infinite loops
+        attempts = 0
+
+        while attempts < max_attempts:
+            item_path = self.inputs[index]
+            label_path = self.labels[index]
+
+            if os.path.exists(item_path) and os.path.exists(label_path):
+                try:
+                    data = np.load(item_path)
+                    label = np.load(label_path)
+                    
+                    if self.data_format == 'NDCHW':
+                        data = np.transpose(data, (0, 3, 1, 2))
+                    elif self.data_format == 'NCDHW':
+                        data = np.transpose(data, (3, 0, 1, 2))
+                    elif self.data_format == 'NDHWC':
+                        pass
+                    else:
+                        raise ValueError('Unsupported Data Format!')
+
+                    data = np.float32(data)
+                    label = np.float32(label)
+
+                    item_path_filename = item_path.split(os.sep)[-1]
+                    split_idx = item_path_filename.rindex('_')
+                    filename = item_path_filename[:split_idx]
+                    chunk_id = item_path_filename[split_idx + 6:].split('.')[0]
+
+                    return data, label, filename, chunk_id
+
+                except Exception as e:
+                    print(f"Error loading file {item_path} or {label_path}: {e}")
+
+            index = (index + 1) % len(self.inputs) 
+            attempts += 1
+
+        raise FileNotFoundError("No valid files found in dataset.")
 
     def get_raw_data(self, raw_data_path):
         """Returns raw data directories under the path.
