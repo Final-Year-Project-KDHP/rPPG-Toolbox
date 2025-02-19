@@ -1,5 +1,4 @@
 """PhysNet Trainer."""
-print
 import os
 from collections import OrderedDict
 
@@ -11,7 +10,6 @@ from neural_methods.loss.PhysNetNegPearsonLoss import Neg_Pearson
 from neural_methods.model.PhysNet import PhysNet_padding_Encoder_Decoder_MAX
 from neural_methods.trainer.BaseTrainer import BaseTrainer
 from torch.autograd import Variable
-import torch.nn.functional as F
 from tqdm import tqdm
 
 
@@ -55,12 +53,6 @@ class PhysnetTrainer(BaseTrainer):
         mean_training_losses = []
         mean_valid_losses = []
         lrs = []
-        if self.config.TRAIN.CONTINUE_TRAIN:
-            print("Loading checkpoint")
-            checkpoint = torch.load(self.config.INFERENCE.MODEL_PATH)
-            self.model.load_state_dict(checkpoint['model_state_dict'])
-            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            self.model = self.model.to(self.config.DEVICE)
         for epoch in range(self.max_epoch_num):
             print('')
             print(f"====Training Epoch: {epoch}====")
@@ -68,59 +60,33 @@ class PhysnetTrainer(BaseTrainer):
             train_loss = []
             self.model.train()
             tbar = tqdm(data_loader["train"], ncols=80)
-            count=0
             for idx, batch in enumerate(tbar):
-              tbar.set_description(f"Train epoch {epoch}")
-              data, label, filename = batch[0].to(torch.float32).to(self.device), \
-                                      batch[1].to(torch.float32).to(self.device), \
-                                      batch[2]
-              label = np.squeeze(label[:, 1:2, :], axis=1)
+                tbar.set_description("Train epoch %s" % epoch)
+                rPPG, x_visual, x_visual3232, x_visual1616 = self.model(
+                    batch[0].to(torch.float32).to(self.device))
+                BVP_label = np.squeeze(batch[1][:,0:1,:], axis=1).to(
+                    torch.float32).to(self.device)
+                rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
+                BVP_label = (BVP_label - torch.mean(BVP_label)) / \
+                            torch.std(BVP_label)  # normalize
+                loss = self.loss_model(rPPG, BVP_label)
+                if torch.isnan(loss):
+                    print(BVP_label)
+                loss.backward()
+                running_loss += loss.item()
+                if idx % 100 == 99:  # print every 100 mini-batches
+                    print(
+                        f'[{epoch}, {idx + 1:5d}] loss: {running_loss / 100:.3f}')
+                    running_loss = 0.0
+                train_loss.append(loss.item())
 
-              rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data)
-              #print("rspo2",rspo2)
-              # Check if rspo2 contains NaN values
-              # if torch.isnan(rspo2).any():
-              #     count += 1
-              #     print(f"NaN detected in rspo2 for batch {idx}. Skipping this batch.")
-              #     continue 
+                # Append the current learning rate to the list
+                lrs.append(self.scheduler.get_last_lr())
 
-              # Compute loss
-              rmse_loss = 0.0
-              for bb in range(data.shape[0]):
-                  rspo2_value = rspo2[bb] if isinstance(rspo2[bb], torch.Tensor) else torch.tensor(rspo2[bb].item(), device=label[bb].device)
-                  label_value = label[bb].mean().float()
-                  # if torch.isnan(rspo2).any() or torch.isnan(label).any():
-                  #     print(f"rspo2: {rspo2}, label: {label}")
-                  rmse_loss += torch.sqrt(F.mse_loss(rspo2_value, label_value))
-              rmse_loss /= data.shape[0]
-
-              # Check if loss is NaN
-              if torch.isnan(rmse_loss):
-                  count += 1
-                  print(f"NaN detected in loss for batch {idx}. Skipping backpropagation.", rspo2,label_value)
-                  continue  # Skip this batch
-
-              # Backward pass
-              loss = rmse_loss
-              loss.backward()
-
-              # Check for NaN gradients
-              for param in self.model.parameters():
-                  if torch.isnan(param.grad).any():
-                      print("NaN detected in gradients. Skipping optimizer step.")
-                      self.optimizer.zero_grad()  # Reset gradients
-                      continue
-
-              running_loss += loss.item()
-              train_loss.append(loss.item())
-
-              # Optimizer step
-              self.optimizer.step()
-              self.scheduler.step()
-              self.optimizer.zero_grad()  # Reset gradients
-              tbar.set_postfix(loss=loss.item())
-            print("count : ",count)
-
+                self.optimizer.step()
+                self.scheduler.step()
+                self.optimizer.zero_grad()
+                tbar.set_postfix(loss=loss.item())
 
             # Append the mean training loss for the epoch
             mean_training_losses.append(np.mean(train_loss))
@@ -138,7 +104,6 @@ class PhysnetTrainer(BaseTrainer):
                     self.min_valid_loss = valid_loss
                     self.best_epoch = epoch
                     print("Update best model! Best epoch: {}".format(self.best_epoch))
-            
         if not self.config.TEST.USE_LAST_EPOCH: 
             print("best trained epoch: {}, min_val_loss: {}".format(
                 self.best_epoch, self.min_valid_loss))
@@ -159,28 +124,19 @@ class PhysnetTrainer(BaseTrainer):
             vbar = tqdm(data_loader["valid"], ncols=80)
             for valid_idx, valid_batch in enumerate(vbar):
                 vbar.set_description("Validation")
-                data, label = valid_batch[0].to(torch.float32).to(self.device), valid_batch[1].to(torch.float32).to(self.device)
-                label= np.squeeze(label[:,1:2,:],axis=1)
-                # BVP_label = valid_batch[1].to(
-                #     torch.float32).to(self.device)
-                rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data)
-                # rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
-                # BVP_label = (BVP_label - torch.mean(BVP_label)) / \
-                #             torch.std(BVP_label)  # normalize
-
-                rmse_loss = 0.0
-                for bb in range(data.shape[0]):
-                    rspo2_value = torch.tensor(rspo2[bb].item(), device=label[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
-                    label_value = label[bb].mean().float()
-                    valid_loss.append(F.mse_loss(rspo2_value, label_value))
-                
-                # loss_ecg = self.loss_model(rPPG, BVP_label)
+                BVP_label = np.squeeze(valid_batch[1][:,0:1,:], axis=1).to(
+                    torch.float32).to(self.device)
+                rPPG, x_visual, x_visual3232, x_visual1616 = self.model(
+                    valid_batch[0].to(torch.float32).to(self.device))
+                rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
+                BVP_label = (BVP_label - torch.mean(BVP_label)) / \
+                            torch.std(BVP_label)  # normalize
+                loss_ecg = self.loss_model(rPPG, BVP_label)
+                valid_loss.append(loss_ecg.item())
                 valid_step += 1
-                # vbar.set_postfix(loss=rmse_loss.item())
-            # valid_loss = np.asarray(valid_loss)
-            spo2_errors_tensor = torch.stack(valid_loss)  # Stack into a single tensor
-            RMSE = torch.sqrt(spo2_errors_tensor.mean())
-        return RMSE
+                vbar.set_postfix(loss=loss_ecg.item())
+            valid_loss = np.asarray(valid_loss)
+        return np.mean(valid_loss)
 
     def test(self, data_loader):
         """ Runs the model on test sets."""
@@ -197,7 +153,7 @@ class PhysnetTrainer(BaseTrainer):
                 raise ValueError("Inference model path error! Please check INFERENCE.MODEL_PATH in your yaml.")
             self.model.load_state_dict(torch.load(self.config.INFERENCE.MODEL_PATH))
             print("Testing uses pretrained model!")
-            #print(self.config.INFERENCE.MODEL_PATH)
+            print(self.config.INFERENCE.MODEL_PATH)
         else:
             if self.config.TEST.USE_LAST_EPOCH:
                 last_epoch_model_path = os.path.join(
@@ -215,23 +171,16 @@ class PhysnetTrainer(BaseTrainer):
         self.model = self.model.to(self.config.DEVICE)
         self.model.eval()
         print("Running model evaluation on the testing dataset!")
-        test_loss = []
-        rspo2_values = []
-        label_values = []
         with torch.no_grad():
             for _, test_batch in enumerate(tqdm(data_loader["test"], ncols=80)):
                 batch_size = test_batch[0].shape[0]
                 data, label = test_batch[0].to(
                     self.config.DEVICE), test_batch[1].to(self.config.DEVICE)
-                label= np.squeeze(label[:,1:2,:],axis=1)
-                rspo2, _, _, _ = self.model(data)
-                # print(label.ndim)
-                if label.ndim == 3:
-                    label = np.squeeze(label[:, 1:2, :])
-                # print(label)
+                pred_ppg_test, _, _, _ = self.model(data)
+
                 if self.config.TEST.OUTPUT_SAVE_DIR:
                     label = label.cpu()
-                    rspo2 = rspo2.cpu()
+                    pred_ppg_test = pred_ppg_test.cpu()
 
                 for idx in range(batch_size):
                     subj_index = test_batch[2][idx]
@@ -239,34 +188,18 @@ class PhysnetTrainer(BaseTrainer):
                     if subj_index not in predictions.keys():
                         predictions[subj_index] = dict()
                         labels[subj_index] = dict()
-                    predictions[subj_index][sort_index] = rspo2[idx]
-
-                    rspo2_value = torch.tensor(rspo2[idx].item(), device=label[idx].device) if not isinstance(rspo2[idx], torch.Tensor) else rspo2[idx]
-                    rounded_value = round(rspo2_value.item())
-                    rspo2_value = torch.tensor(rounded_value, device=rspo2_value.device)
-                    label_value = label[idx].mean().float().round()
-
-                    rspo2_values.append(rspo2_value.item())
-                    label_values.append(label_value.item())
-
-                    test_loss.append(F.mse_loss(rspo2_value, label_value))
+                    predictions[subj_index][sort_index] = pred_ppg_test[idx]
                     labels[subj_index][sort_index] = label[idx]
 
         print('')
-        spo2_errors_tensor = torch.stack(test_loss)  # Stack into a single tensor
-        RMSE = torch.sqrt(spo2_errors_tensor.mean())
-        print(rspo2_values)
-        print(label_values)
-        print("RMSE:", RMSE.item(), "\nPredicted SpO2 value:", np.mean(rspo2_values), "\nGround Truth value:", np.mean(label_values))
-        # calculate_metrics(predictions, labels, self.config)
-        # if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs 
-        #     self.save_test_outputs(predictions, labels, self.config)
+        calculate_metrics(predictions, labels, self.config)
+        if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs 
+            self.save_test_outputs(predictions, labels, self.config)
 
     def save_model(self, index):
         if not os.path.exists(self.model_dir):
             os.makedirs(self.model_dir)
         model_path = os.path.join(
             self.model_dir, self.model_file_name + '_Epoch' + str(index) + '.pth')
-        torch.save({"model_state_dict":self.model.state_dict(),
-                    "optimizer_state_dict":self.optimizer.state_dict()}, model_path)
+        torch.save(self.model.state_dict(), model_path)
         print('Saved Model Path: ', model_path)
