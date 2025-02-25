@@ -270,16 +270,16 @@ class BaseLoader(Dataset):
         elif config_preprocess.LABEL_TYPE == "DiffNormalized":
             hr_bvps = BaseLoader.diff_normalize_label(hr_bvps)
         elif config_preprocess.LABEL_TYPE == "Standardized":
-            hr_bvps = BaseLoader.standardized_label(hr_bvps)
+            hr_bvps_standard = BaseLoader.standardized_label(hr_bvps)
         else:
             raise ValueError("Unsupported label type!")
 
         if config_preprocess.DO_CHUNK:  # chunk data into snippets
             frames_clips, hr_bvps_clips, spo2_bvps_clips = self.chunk(
-                data, hr_bvps, spo2_bvps, config_preprocess.CHUNK_LENGTH)
+                data, hr_bvps_standard, hr_bvps, spo2_bvps, config_preprocess.CHUNK_LENGTH)
         else:
             frames_clips = np.array([data])
-            hr_bvps_clips = np.array([hr_bvps])
+            hr_bvps_clips = np.array([hr_bvps_standard])
             spo2_bvps_clips = np.array([spo2_bvps])
 
         return frames_clips, hr_bvps_clips, spo2_bvps_clips
@@ -462,7 +462,7 @@ class BaseLoader(Dataset):
             resized_frames[i] = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
         return resized_frames
 
-    def chunk(self, frames, hr_bvps, spo2_bvps, chunk_length):
+    def chunk(self, frames, hr_bvps_standard, hr_bvps, spo2_bvps, chunk_length):
         """Chunk the data into small chunks.
 
         Args:
@@ -481,7 +481,12 @@ class BaseLoader(Dataset):
         # frames_clips = [frames[i * chunk_length:(i + 1) * chunk_length] for i in range(clip_num)]
         # bvps_clips = [bvps[i * chunk_length:(i + 1) * chunk_length] for i in range(clip_num)]
         for i in range(clip_num):
-            hr_bvp_clip = hr_bvps[i * chunk_length:(i + 1) * chunk_length]
+            hr_clip = np.array(hr_bvps[i * chunk_length:(i + 1) * chunk_length])
+            if np.count_nonzero(arr == 127) > 10:
+                continue
+            elif np.count_nonzero(arr == 0) > 10:
+                continue
+            hr_bvp_clip = hr_bvps_standard[i * chunk_length:(i + 1) * chunk_length]
             spo2_bvp_clip = spo2_bvps[i * chunk_length:(i + 1) * chunk_length]
             hr_bvps_clips.append(hr_bvp_clip)
             spo2_bvps_clips.append(spo2_bvp_clip)
@@ -745,3 +750,7 @@ class BaseLoader(Dataset):
             np.linspace(
                 1, input_signal.shape[0], target_length), np.linspace(
                 1, input_signal.shape[0], input_signal.shape[0]), input_signal)
+
+    def get_hr(self, y, sr=12, min=30, max=180):
+        p, q = welch(y, sr, nfft=1e5/sr, nperseg=np.min((len(y)-1, 256)))
+        return p[(p>min/60)&(p<max/60)][np.argmax(q[(p>min/60)&(p<max/60)])]*60
