@@ -88,6 +88,10 @@ _C.TRAIN.DATA.PREPROCESS.BIGSMALL.RESIZE.BIG_W = 144
 _C.TRAIN.DATA.PREPROCESS.BIGSMALL.RESIZE.BIG_H = 144
 _C.TRAIN.DATA.PREPROCESS.BIGSMALL.RESIZE.SMALL_W = 9
 _C.TRAIN.DATA.PREPROCESS.BIGSMALL.RESIZE.SMALL_H = 9
+_C.TRAIN.DATA.PREPROCESS.IBVP = CN()
+_C.TRAIN.DATA.PREPROCESS.IBVP.DATA_MODE = 'RGB'
+
+
 # -----------------------------------------------------------------------------
 # Valid settings
 # -----------------------------------------------------------------------------\
@@ -149,6 +153,8 @@ _C.VALID.DATA.PREPROCESS.BIGSMALL.RESIZE.BIG_W = 144
 _C.VALID.DATA.PREPROCESS.BIGSMALL.RESIZE.BIG_H = 144
 _C.VALID.DATA.PREPROCESS.BIGSMALL.RESIZE.SMALL_W = 9
 _C.VALID.DATA.PREPROCESS.BIGSMALL.RESIZE.SMALL_H = 9
+_C.VALID.DATA.PREPROCESS.IBVP = CN()
+_C.VALID.DATA.PREPROCESS.IBVP.DATA_MODE = 'RGB'
 
 # -----------------------------------------------------------------------------
 # Test settings
@@ -214,7 +220,8 @@ _C.TEST.DATA.PREPROCESS.BIGSMALL.RESIZE.BIG_W = 144
 _C.TEST.DATA.PREPROCESS.BIGSMALL.RESIZE.BIG_H = 144
 _C.TEST.DATA.PREPROCESS.BIGSMALL.RESIZE.SMALL_W = 9
 _C.TEST.DATA.PREPROCESS.BIGSMALL.RESIZE.SMALL_H = 9
-
+_C.TEST.DATA.PREPROCESS.IBVP = CN()
+_C.TEST.DATA.PREPROCESS.IBVP.DATA_MODE = 'RGB'
 # -----------------------------------------------------------------------------
 # Unsupervised method settings
 # -----------------------------------------------------------------------------\
@@ -271,7 +278,8 @@ _C.UNSUPERVISED.DATA.PREPROCESS.CROP_FACE.DETECTION.USE_MEDIAN_FACE_BOX = False
 _C.UNSUPERVISED.DATA.PREPROCESS.RESIZE = CN()
 _C.UNSUPERVISED.DATA.PREPROCESS.RESIZE.W = 128
 _C.UNSUPERVISED.DATA.PREPROCESS.RESIZE.H = 128
-
+_C.UNSUPERVISED.DATA.PREPROCESS.IBVP = CN()
+_C.UNSUPERVISED.DATA.PREPROCESS.IBVP.DATA_MODE = 'RGB'
 ### -----------------------------------------------------------------------------
 # Model settings
 # -----------------------------------------------------------------------------
@@ -282,7 +290,7 @@ _C.MODEL.NAME = ''
 _C.MODEL.RESUME = ''
 # Dropout rate
 _C.MODEL.DROP_RATE = 0.0
-_C.MODEL.MODEL_DIR = 'PreTrainedModels'
+_C.MODEL.MODEL_DIR = '/content/drive/MyDrive/DDCache/PhysMambaSF_SP/TrainedModels'
 
 # Specific parameters for physnet parameters
 _C.MODEL.PHYSNET = CN()
@@ -292,7 +300,8 @@ _C.MODEL.PHYSNET.FRAME_NUM = 64
 # Specific parameters for iBVPNet parameters
 # -----------------------------------------------------------------------------
 _C.MODEL.iBVPNet = CN()
-_C.MODEL.iBVPNet.FRAME_NUM = 64
+_C.MODEL.iBVPNet.FRAME_NUM = 160
+_C.MODEL.iBVPNet.CHANNELS = 3
 
 # -----------------------------------------------------------------------------
 # Model Settings for TS-CAN
@@ -345,7 +354,7 @@ _C.NUM_OF_GPU_TRAIN = 1
 # -----------------------------------------------------------------------------
 _C.LOG = CN()
 _C.LOG.PATH = "runs/exp"
-
+#"/content/drive/MyDrive/DDCache/PhysMambaSF_SP/runs/exp"
 
 def _update_config_from_file(config, cfg_file):
     config.defrost()
@@ -560,6 +569,7 @@ def update_config(config, args):
     # configured log directory (runs/exp by default)
     if config.TOOLBOX_MODE == 'train_and_test' or config.TOOLBOX_MODE == 'only_test':
         config.TEST.OUTPUT_SAVE_DIR = os.path.join(config.LOG.PATH, config.TEST.DATA.EXP_DATA_NAME, 'saved_test_outputs')
+        print("-----------------Print config dir:",config.TEST.OUTPUT_SAVE_DIR)
     elif config.TOOLBOX_MODE == 'unsupervised_method':
         config.UNSUPERVISED.OUTPUT_SAVE_DIR = os.path.join(config.LOG.PATH, config.UNSUPERVISED.DATA.EXP_DATA_NAME, 'saved_outputs')
     else:
