@@ -233,7 +233,7 @@ class PhysMambaTrainer(BaseTrainer):
         with torch.no_grad():
             for _, test_batch in enumerate(tqdm(data_loader["test"], ncols=80)):
 
-                print("-------------debugging test_batch:",test_batch)
+                print("-------------debugging test_batch shape:",test_batch.shape)
 
                 batch_size = test_batch[0].shape[0]
                 data, label = test_batch[0].to(self.device), test_batch[1].to(self.device)
