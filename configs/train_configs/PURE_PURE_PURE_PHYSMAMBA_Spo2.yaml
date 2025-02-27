@@ -72,7 +72,7 @@ TEST:
     DO_PREPROCESS: True                # Set to True if preprocessing is required
     DATA_FORMAT: NCDHW
     DATA_PATH: "/content/drive/MyDrive/Datasets/Extracted_Datasets/PURE"  # Update as needed
-    CACHED_PATH: "/content/drive/MyDrive/DDCache/PhysMambaSF"     # Path for cached/preprocessed data
+    CACHED_PATH: "/content/drive/MyDrive/DDCache/PhysMambaSF_sp"     # Path for cached/preprocessed data
     EXP_DATA_NAME: ""
     BEGIN: 0.8                          # Use the entire dataset for testing
     END: 1.0
