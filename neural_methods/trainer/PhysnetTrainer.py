@@ -124,6 +124,7 @@ class PhysnetTrainer(BaseTrainer):
         valid_step = 0
         with torch.no_grad():
             vbar = tqdm(data_loader["valid"], ncols=80)
+            hrs = []
             for valid_idx, valid_batch in enumerate(vbar):
                 vbar.set_description("Validation")
                 BVP_label = np.squeeze(valid_batch[1][:,0:1,:], axis=1).to(
