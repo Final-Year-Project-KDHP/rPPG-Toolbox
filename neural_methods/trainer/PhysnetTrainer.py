@@ -62,25 +62,29 @@ class PhysnetTrainer(BaseTrainer):
             tbar = tqdm(data_loader["train"], ncols=80)
             for idx, batch in enumerate(tbar):
                 tbar.set_description("Train epoch %s" % epoch)
-                rPPG, x_visual, x_visual3232, x_visual1616 = self.model(
+                rPPG, HRout = self.model(
                     batch[0].to(torch.float32).to(self.device))
                 BVP_label = np.squeeze(batch[1][:,0:1,:], axis=1).to(
                     torch.float32).to(self.device)
                 rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
                 BVP_label = (BVP_label - torch.mean(BVP_label)) / \
                             torch.std(BVP_label)  # normalize
-                loss = self.loss_model(rPPG, BVP_label)
+                # loss = self.loss_model(rPPG, BVP_label)
+                hrs = []
+                for _1, _2 in zip(HRout, BVP_label):
+                    hrs.append((_1.cpu().detach().numpy(), self.get_hr(_2.cpu().detach().numpy())))
+                RMSE_loss = np.mean([(i-j)**2 for i, j in hrs])**0.5
                 if torch.isinf(loss) or torch.isnan(loss):
                     print("Skip the batch")
                     continue
                 
-                loss.backward()
-                running_loss += loss.item()
+                RMSE_loss.backward()
+                running_loss += RMSE_loss.item()
                 if idx % 100 == 99:  # print every 100 mini-batches
                     print(
                         f'[{epoch}, {idx + 1:5d}] loss: {running_loss / 100:.3f}')
                     running_loss = 0.0
-                train_loss.append(loss.item())
+                train_loss.append(RMSE_loss.item())
 
                 # Append the current learning rate to the list
                 lrs.append(self.scheduler.get_last_lr())
@@ -88,7 +92,7 @@ class PhysnetTrainer(BaseTrainer):
                 self.optimizer.step()
                 self.scheduler.step()
                 self.optimizer.zero_grad()
-                tbar.set_postfix(loss=loss.item())
+                tbar.set_postfix(loss=RMSE_loss.item())
 
             # Append the mean training loss for the epoch
             mean_training_losses.append(np.mean(train_loss))
