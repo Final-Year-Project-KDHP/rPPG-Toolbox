@@ -290,7 +290,7 @@ _C.MODEL.NAME = ''
 _C.MODEL.RESUME = ''
 # Dropout rate
 _C.MODEL.DROP_RATE = 0.0
-_C.MODEL.MODEL_DIR = '/content/drive/MyDrive/DDCache/PhysMambaSF_SP/TrainedModels'
+_C.MODEL.MODEL_DIR = 'storage/PhysMambaSF_sp/TrainedModels'
 
 # Specific parameters for physnet parameters
 _C.MODEL.PHYSNET = CN()
