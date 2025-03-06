@@ -25,7 +25,7 @@ from tqdm import tqdm
 from retinaface import RetinaFace   # Source code: https://github.com/serengil/retinaface
 import torch
 import sys
-sys.path.append("/content/yoloface")
+sys.path.append("/home/ddew0188/ASK/yoloface")
 from face_detector import YoloDetector
 
 
