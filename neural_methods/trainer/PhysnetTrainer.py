@@ -74,7 +74,7 @@ class PhysnetTrainer(BaseTrainer):
                 for _1, _2 in zip(HRout, BVP_label):
                     hrs.append((_1.cpu().detach().numpy(), self.get_hr(_2.cpu().detach().numpy())))
                 RMSE_loss = np.mean([(i-j)**2 for i, j in hrs])**0.5
-                if torch.isinf(loss) or torch.isnan(loss):
+                if torch.isinf(RMSE_loss) or torch.isnan(RMSE_loss):
                     print("Skip the batch")
                     continue
                 
