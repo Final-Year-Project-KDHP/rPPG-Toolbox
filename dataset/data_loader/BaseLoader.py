@@ -23,6 +23,10 @@ import pandas as pd
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from retinaface import RetinaFace   # Source code: https://github.com/serengil/retinaface
+import torch
+import sys
+sys.path.append("/content/yoloface")
+from face_detector import YoloDetector
 
 
 class BaseLoader(Dataset):
@@ -59,6 +63,7 @@ class BaseLoader(Dataset):
         self.data_format = config_data.DATA_FORMAT
         self.do_preprocess = config_data.DO_PREPROCESS
         self.config_data = config_data
+        self.yolo_detector = None
 
         assert (config_data.BEGIN < config_data.END)
         assert (config_data.BEGIN > 0 or config_data.BEGIN == 0)
@@ -73,7 +78,6 @@ class BaseLoader(Dataset):
                                  'Please set DO_PREPROCESS to True. Preprocessed directory does not exist!')
             if not os.path.exists(self.file_list_path):
                 print('File list does not exist... generating now...')
-                print(self.file_list_path)
                 self.raw_data_dirs = self.get_raw_data(self.raw_data_path)
                 self.build_file_list_retroactive(self.raw_data_dirs, config_data.BEGIN, config_data.END)
                 print('File list generated.', end='\n\n')
@@ -88,34 +92,49 @@ class BaseLoader(Dataset):
         return len(self.inputs)
 
     def __getitem__(self, index):
-        """Returns a clip of video(3,T,W,H) and it's corresponding signals(T)."""
-        data = np.load(self.inputs[index])
-        label = np.load(self.labels[index])
-        if self.data_format == 'NDCHW':
-            data = np.transpose(data, (0, 3, 1, 2))
-        elif self.data_format == 'NCDHW':
-            data = np.transpose(data, (3, 0, 1, 2))
-        elif self.data_format == 'NDHWC':
-            pass
-        else:
-            raise ValueError('Unsupported Data Format!')
-        data = np.float32(data)
-        label = np.float32(label)
-        # item_path is the location of a specific clip in a preprocessing output folder
-        # For example, an item path could be /home/data/PURE_SizeW72_...unsupervised/501_input0.npy
-        item_path = self.inputs[index]
-        # item_path_filename is simply the filename of the specific clip
-        # For example, the preceding item_path's filename would be 501_input0.npy
-        item_path_filename = item_path.split(os.sep)[-1]
-        # split_idx represents the point in the previous filename where we want to split the string 
-        # in order to retrieve a more precise filename (e.g., 501) preceding the chunk (e.g., input0)
-        split_idx = item_path_filename.rindex('_')
-        # Following the previous comments, the filename for example would be 501
-        filename = item_path_filename[:split_idx]
-        # chunk_id is the extracted, numeric chunk identifier. Following the previous comments, 
-        # the chunk_id for example would be 0
-        chunk_id = item_path_filename[split_idx + 6:].split('.')[0]
-        return data, label, filename, chunk_id
+        """Returns a clip of video(3,T,W,H) and its corresponding signals(T)."""
+        
+        max_attempts = len(self.inputs)  # Prevent infinite loop
+        attempts = 0
+        
+        while attempts < max_attempts:
+            item_path = self.inputs[index]
+            label_path = self.labels[index]
+            
+            if os.path.exists(item_path) and os.path.exists(label_path):
+                try:
+                    data = np.load(item_path)
+                    label = np.load(label_path)
+                    
+                    if self.data_format == 'NDCHW':
+                        data = np.transpose(data, (0, 3, 1, 2))
+                    elif self.data_format == 'NCDHW':
+                        data = np.transpose(data, (3, 0, 1, 2))
+                    elif self.data_format == 'NDHWC':
+                        pass
+                    else:
+                        raise ValueError('Unsupported Data Format!')
+
+                    data = np.float32(data)
+                    label = np.float32(label)
+                    
+                    # Extract filename and chunk ID
+                    item_path_filename = item_path.split(os.sep)[-1]
+                    split_idx = item_path_filename.rindex('_')
+                    filename = item_path_filename[:split_idx]
+                    chunk_id = item_path_filename[split_idx + 6:].split('.')[0]
+                    
+                    return data, label, filename, chunk_id
+
+                except Exception as e:
+                    print(f"Error loading file {item_path} or {label_path}: {e}. Moving to next sample.")
+            
+            # Move to the next index if the current file is missing or corrupt
+            index = (index + 1) % len(self.inputs)
+            attempts += 1
+        
+        raise FileNotFoundError("No valid samples found in dataset after multiple attempts.")
+
 
     def get_raw_data(self, raw_data_path):
         """Returns raw data directories under the path.
@@ -211,7 +230,7 @@ class BaseLoader(Dataset):
         self.load_preprocessed_data()  # load all data and corresponding labels (sorted for consistency)
         print("Total Number of raw files preprocessed:", len(data_dirs_split), end='\n\n')
 
-    def preprocess(self, frames, bvps, config_preprocess):
+    def preprocess(self, frames, hr_bvps, spo2_bvps, config_preprocess, filename):
         """Preprocesses a pair of data.
 
         Args:
@@ -233,7 +252,7 @@ class BaseLoader(Dataset):
             config_preprocess.CROP_FACE.DETECTION.DYNAMIC_DETECTION_FREQUENCY,
             config_preprocess.CROP_FACE.DETECTION.USE_MEDIAN_FACE_BOX,
             config_preprocess.RESIZE.W,
-            config_preprocess.RESIZE.H)
+            config_preprocess.RESIZE.H, filename)
         # Check data transformation type
         data = list()  # Video data
         for data_type in config_preprocess.DATA_TYPE:
@@ -244,110 +263,144 @@ class BaseLoader(Dataset):
                 data.append(BaseLoader.diff_normalize_data(f_c))
             elif data_type == "Standardized":
                 data.append(BaseLoader.standardized_data(f_c))
+            elif data_type == "Normalized":
+                data.append(BaseLoader.per_channel_normalize(f_c))
             else:
                 raise ValueError("Unsupported data type!")
         data = np.concatenate(data, axis=-1)  # concatenate all channels
         if config_preprocess.LABEL_TYPE == "Raw":
             pass
         elif config_preprocess.LABEL_TYPE == "DiffNormalized":
-            # bvps = BaseLoader.diff_normalize_label(bvps)
-            pass
+            hr_bvps = BaseLoader.diff_normalize_label(hr_bvps)
         elif config_preprocess.LABEL_TYPE == "Standardized":
-            # bvps = BaseLoader.standardized_label(bvps)
-            pass
+            hr_bvps = BaseLoader.standardized_label(hr_bvps)
         else:
             raise ValueError("Unsupported label type!")
 
         if config_preprocess.DO_CHUNK:  # chunk data into snippets
-            frames_clips, bvps_clips = self.chunk(
-                data, bvps, config_preprocess.CHUNK_LENGTH)
+            frames_clips, hr_bvps_clips, spo2_bvps_clips = self.chunk(
+                data, hr_bvps, spo2_bvps, config_preprocess.CHUNK_LENGTH)
         else:
             frames_clips = np.array([data])
-            bvps_clips = np.array([bvps])
+            hr_bvps_clips = np.array([hr_bvps])
+            spo2_bvps_clips = np.array([spo2_bvps])
 
-        return frames_clips, bvps_clips
+        return frames_clips, hr_bvps_clips, spo2_bvps_clips
 
-    def face_detection(self, frame, backend, use_larger_box=False, larger_box_coef=1.0):
-        """Face detection on a single frame.
+    def face_detection(self, frame, backend, use_larger_box=False, larger_box_coef=1.0, filename=None):
+      """Face detection on a single frame.
 
-        Args:
-            frame(np.array): a single frame.
-            backend(str): backend to utilize for face detection.
-            use_larger_box(bool): whether to use a larger bounding box on face detection.
-            larger_box_coef(float): Coef. of larger box.
-        Returns:
-            face_box_coor(List[int]): coordinates of face bouding box.
-        """
-        if backend == "HC":
-            # Use OpenCV's Haar Cascade algorithm implementation for face detection
-            # This should only utilize the CPU
-            detector = cv2.CascadeClassifier(
-            './dataset/haarcascade_frontalface_default.xml')
-
-            # Computed face_zone(s) are in the form [x_coord, y_coord, width, height]
-            # (x,y) corresponds to the top-left corner of the zone to define using
-            # the computed width and height.
-            face_zone = detector.detectMultiScale(frame)
-
-            if len(face_zone) < 1:
-                print("ERROR: No Face Detected")
-                face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
-            elif len(face_zone) >= 2:
-                # Find the index of the largest face zone
-                # The face zones are boxes, so the width and height are the same
-                max_width_index = np.argmax(face_zone[:, 2])  # Index of maximum width
-                face_box_coor = face_zone[max_width_index]
-                print("Warning: More than one faces are detected. Only cropping the biggest one.")
+      Args:
+          frame(np.array): a single frame.
+          backend(str): backend to utilize for face detection.
+          use_larger_box(bool): whether to use a larger bounding box on face detection.
+          larger_box_coef(float): Coef. of larger box.
+      Returns:
+          face_box_coor(List[int]): coordinates of face bounding box.
+      """
+      #print(f"Invalid backend '{backend}'. Defaulting to YOLOv5.")
+      #backend= "YOLOv5"
+      if backend == "YOLOv5":
+        frame_height, frame_width = frame.shape[:2]
+#         target_size = min(frame_height, frame_width)
+#         model = YoloDetector(
+#     weights_name='nicuface_y5f_state_dict.pt', 
+#     config_name='yolov5l.yaml',
+#     target_size=target_size,     # or another size that works for you
+#     device='cpu',        # or 'cuda:0'
+#     min_face=90
+# )     
+        model = YoloDetector(target_size=None,device='cpu', min_face=80)
+        bboxes, points = model.predict(frame)
+        # print(bboxes[0])
+        
+        if len(bboxes[0]) == 0:
+            # print(f"ERROR: No Face Detected in {filename}")
+            right_rotated_frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+            bboxes, points = model.predict(right_rotated_frame)
+            if len(bboxes[0]) == 0:
+                left_rotated_frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                bboxes, points = model.predict(left_rotated_frame)
+                if len(bboxes[0]) == 0:
+                    return 0
+                else:
+                    face_box_coor = [bboxes[0][0][1], frame_height-bboxes[0][0][2], bboxes[0][0][3], frame_height-bboxes[0][0][0]]
             else:
-                face_box_coor = face_zone[0]
-        elif backend == "RF":
-            # Use a TensorFlow-based RetinaFace implementation for face detection
-            # This utilizes both the CPU and GPU
-            res = RetinaFace.detect_faces(frame)
-
-            if len(res) > 0:
-                # Pick the highest score
-                highest_score_face = max(res.values(), key=lambda x: x['score'])
-                face_zone = highest_score_face['facial_area']
-
-                # This implementation of RetinaFace returns a face_zone in the
-                # form [x_min, y_min, x_max, y_max] that corresponds to the 
-                # corners of a face zone
-                x_min, y_min, x_max, y_max = face_zone
-
-                # Convert to this toolbox's expected format
-                # Expected format: [x_coord, y_coord, width, height]
-                x = x_min
-                y = y_min
-                width = x_max - x_min
-                height = y_max - y_min
-
-                # Find the center of the face zone
-                center_x = x + width // 2
-                center_y = y + height // 2
-                
-                # Determine the size of the square (use the maximum of width and height)
-                square_size = max(width, height)
-                
-                # Calculate the new coordinates for a square face zone
-                new_x = center_x - (square_size // 2)
-                new_y = center_y - (square_size // 2)
-                face_box_coor = [new_x, new_y, square_size, square_size]
-            else:
-                print("ERROR: No Face Detected")
-                face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
+                face_box_coor = [frame_width-bboxes[0][0][3], bboxes[0][0][0], frame_width-bboxes[0][0][1], bboxes[0][0][2]]
+            # return 0
+            # face_box_coor = [0, 0, frame.shape[1], frame.shape[0]]  # Use entire frame as fallback
         else:
-            raise ValueError("Unsupported face detection backend!")
+            # print(f"Face Detected in {filename}")
+            face_box_coor = bboxes[0][0] # Use the first detected bounding box
+      elif backend == "HC":
+          # Use OpenCV's Haar Cascade algorithm implementation for face detection
+          detector = cv2.CascadeClassifier('./dataset/haarcascade_frontalface_default.xml')
+          face_zone = detector.detectMultiScale(frame)
 
-        if use_larger_box:
-            face_box_coor[0] = max(0, face_box_coor[0] - (larger_box_coef - 1.0) / 2 * face_box_coor[2])
-            face_box_coor[1] = max(0, face_box_coor[1] - (larger_box_coef - 1.0) / 2 * face_box_coor[3])
-            face_box_coor[2] = larger_box_coef * face_box_coor[2]
-            face_box_coor[3] = larger_box_coef * face_box_coor[3]
-        return face_box_coor
+          if len(face_zone) < 1:
+              print("ERROR: No Face Detected")
+              face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
+          elif len(face_zone) >= 2:
+              max_width_index = np.argmax(face_zone[:, 2])  # Index of the largest face
+              face_box_coor = face_zone[max_width_index]
+              print("Warning: More than one face detected. Cropping the largest one.")
+          else:
+              face_box_coor = face_zone[0]
+      elif backend == "RF":
+          # Use RetinaFace for face detection
+          res = RetinaFace.detect_faces(frame)
+          print("Type of res:", type(res))  # Debug: Print the type of `res`
+          if isinstance(res, tuple):
+              if len(res)>= 2:  # Assume tuple contains (bounding_boxes, scores)
+                  print("First element:", res[0])
+                  print("Second element:", res[1])
+                  bounding_boxes, scores = res
+                  if len(bounding_boxes) > 0:
+                      # Pick the bounding box with the highest score
+                      highest_score_idx = np.argmax(scores)
+                      face_zone = bounding_boxes[highest_score_idx]
+                      x_min, y_min, x_max, y_max = face_zone
+                      x = x_min
+                      y = y_min
+                      width = x_max - x_min
+                      height = y_max - y_min
+                      face_box_coor = [x, y, width, height]
+                  else:
+                      print("No faces detected in tuple.")
+                      face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
+              else:
+                  print("Unexpected tuple structure:", res)
+                  face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
+          elif isinstance(res, dict):
+              if len(res) > 0:
+                  highest_score_face = max(res.values(), key=lambda x: x['score'])
+                  face_zone = highest_score_face['facial_area']
+                  x_min, y_min, x_max, y_max = face_zone
+                  x = x_min
+                  y = y_min
+                  width = x_max - x_min
+                  height = y_max - y_min
+                  face_box_coor = [x, y, width, height]
+              else:
+                  print("Empty dictionary: No faces detected.")
+                  face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
+          else:
+              print("ERROR: Unexpected return type from RetinaFace.detect_faces():", type(res))
+              face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
+      else:
+          raise ValueError("Unsupported face detection backend!")
+
+      if use_larger_box:
+          # print(len(face_box_coor))
+          face_box_coor[0] = max(0, face_box_coor[0] - (larger_box_coef - 1.0) / 2 * face_box_coor[2])
+          face_box_coor[1] = max(0, face_box_coor[1] - (larger_box_coef - 1.0) / 2 * face_box_coor[3])
+          face_box_coor[2] = larger_box_coef * face_box_coor[2]
+          face_box_coor[3] = larger_box_coef * face_box_coor[3]
+      return face_box_coor
+
 
     def crop_face_resize(self, frames, use_face_detection, backend, use_larger_box, larger_box_coef, use_dynamic_detection, 
-                         detection_freq, use_median_box, width, height):
+                         detection_freq, use_median_box, width, height, filename):
         """Crop face and resize frames.
 
         Args:
@@ -365,18 +418,30 @@ class BaseLoader(Dataset):
         Returns:
             resized_frames(list[np.array(float)]): Resized and cropped frames
         """
+        # If not detected, turn on dynamic detection
+        box_coor = self.face_detection(frames[0], backend, use_larger_box, larger_box_coef, filename)
+        if box_coor == 0:
+            print(f"Using Dynamic detection for {filename}")
+            use_dynamic_detection = True
         # Face Cropping
         if use_dynamic_detection:
             num_dynamic_det = ceil(frames.shape[0] / detection_freq)
         else:
             num_dynamic_det = 1
         face_region_all = []
+
         # Perform face detection by num_dynamic_det" times.
         for idx in range(num_dynamic_det):
             if use_face_detection:
-                face_region_all.append(self.face_detection(frames[detection_freq * idx], backend, use_larger_box, larger_box_coef))
+                box_coor = self.face_detection(frames[detection_freq * idx], backend, use_larger_box, larger_box_coef, filename)
+                if box_coor != 0:
+                    face_region_all.append(box_coor)
+                    break
             else:
                 face_region_all.append([0, 0, frames.shape[1], frames.shape[2]])
+        if not face_region_all:
+            print(f"ERROR: Face not Detected in {filename}")
+            face_region_all.append([0, 0, frames.shape[1], frames.shape[2]])
         face_region_all = np.asarray(face_region_all, dtype='int')
         if use_median_box:
             # Generate a median bounding box based on all detected face regions
@@ -400,7 +465,7 @@ class BaseLoader(Dataset):
             resized_frames[i] = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
         return resized_frames
 
-    def chunk(self, frames, bvps, chunk_length):
+    def chunk(self, frames, hr_bvps, spo2_bvps, chunk_length):
         """Chunk the data into small chunks.
 
         Args:
@@ -413,17 +478,18 @@ class BaseLoader(Dataset):
         """
 
         clip_num = frames.shape[0] // chunk_length
-        bvps_clips = []
+        hr_bvps_clips = []
+        spo2_bvps_clips = []
         frames_clips = []
         # frames_clips = [frames[i * chunk_length:(i + 1) * chunk_length] for i in range(clip_num)]
         # bvps_clips = [bvps[i * chunk_length:(i + 1) * chunk_length] for i in range(clip_num)]
         for i in range(clip_num):
-            bvp_clip = bvps[i * chunk_length:(i + 1) * chunk_length]
-            bvp_clip_mean = np.mean(bvp_clip)
-            if bvp_clip_mean >= 90:
-                bvps_clips.append(bvp_clip)
-                frames_clips.append(frames[i * chunk_length:(i + 1) * chunk_length])
-        return np.array(frames_clips), np.array(bvps_clips)
+            hr_bvp_clip = hr_bvps[i * chunk_length:(i + 1) * chunk_length]
+            spo2_bvp_clip = spo2_bvps[i * chunk_length:(i + 1) * chunk_length]
+            hr_bvps_clips.append(hr_bvp_clip)
+            spo2_bvps_clips.append(spo2_bvp_clip)
+            frames_clips.append(frames[i * chunk_length:(i + 1) * chunk_length])
+        return np.array(frames_clips), np.array(hr_bvps_clips), np.array(spo2_bvps_clips)
 
     def save(self, frames_clips, bvps_clips, filename):
         """Save all the chunked data.
@@ -450,7 +516,7 @@ class BaseLoader(Dataset):
             count += 1
         return count
 
-    def save_multi_process(self, frames_clips, bvps_clips, filename):
+    def save_multi_process(self, frames_clips, hr_bvps_clips, spo2_bvps_clips, filename):
         """Save all the chunked data with multi-thread processing.
 
         Args:
@@ -466,18 +532,18 @@ class BaseLoader(Dataset):
         count = 0
         input_path_name_list = []
         label_path_name_list = []
-        for i in range(len(bvps_clips)):
+        for i in range(len(hr_bvps_clips)):
             assert (len(self.inputs) == len(self.labels))
             input_path_name = self.cached_path + os.sep + "{0}_input{1}.npy".format(filename, str(count))
             label_path_name = self.cached_path + os.sep + "{0}_label{1}.npy".format(filename, str(count))
             input_path_name_list.append(input_path_name)
             label_path_name_list.append(label_path_name)
             np.save(input_path_name, frames_clips[i])
-            np.save(label_path_name, bvps_clips[i])
+            np.save(label_path_name, np.array([hr_bvps_clips[i], spo2_bvps_clips[i]]))
             count += 1
         return input_path_name_list, label_path_name_list
 
-    def multi_process_manager(self, data_dirs, config_preprocess, multi_process_quota=8):
+    def multi_process_manager(self, data_dirs, config_preprocess, multi_process_quota=4):
         """Allocate dataset preprocessing across multiple processes.
 
         Args:
@@ -599,7 +665,6 @@ class BaseLoader(Dataset):
         self.inputs = inputs
         self.labels = labels
         self.preprocessed_data_len = len(inputs)
-       
 
     @staticmethod
     def diff_normalize_data(data):
@@ -640,6 +705,41 @@ class BaseLoader(Dataset):
         label = label / np.std(label)
         label[np.isnan(label)] = 0
         return label
+
+    @staticmethod
+    def per_channel_normalize(data):
+        """
+        Normalize RGB video data per channel along the time-axis.
+
+        Args:
+            data (numpy.ndarray): Video data with shape (n, h, w, c), where
+                                  n = number of frames,
+                                  h = height of each frame,
+                                  w = width of each frame,
+                                  c = number of channels (should be 3 for RGB).
+
+        Returns:
+            numpy.ndarray: Per-channel normalized data of the same shape.
+        """
+        n, h, w, c = data.shape
+        assert c == 3, "The input data must have 3 channels (RGB)."
+
+        normalized_data = np.zeros_like(data, dtype=np.float32)
+
+        for channel in range(c):
+            channel_data = data[:, :, :, channel]
+
+            mean = np.mean(channel_data)
+            std = np.std(channel_data)
+
+            std = std if std > 1e-7 else 1e-7
+
+            normalized_data[:, :, :, channel] = (channel_data - mean) / std
+
+        normalized_data[np.isnan(normalized_data)] = 0
+
+        return normalized_data
+
 
     @staticmethod
     def resample_ppg(input_signal, target_length):
