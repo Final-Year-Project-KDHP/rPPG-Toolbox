@@ -32,6 +32,12 @@ class PhysMambaTrainer(BaseTrainer):
         self.min_valid_loss = None
         self.best_epoch = 0
         self.diff_flag = 0
+
+        #logging
+        self.train_loss_history = []
+        self.valid_loss_history = []
+        self.lr_history = []
+
         if config.TRAIN.DATA.PREPROCESS.LABEL_TYPE == "DiffNormalized":
             self.diff_flag = 1
         self.frame_rate = config.TRAIN.DATA.FS
@@ -134,18 +140,40 @@ class PhysMambaTrainer(BaseTrainer):
                 self.optimizer.step()
                 self.scheduler.step()
 
+                # Keep track of LR (OneCycleLR changes it every iteration, but you can log it per epoch if you want)
+                current_lr = self.scheduler.get_last_lr()[0]
+
                 tbar.set_postfix(loss=rmse_loss.item())
+
+            #logging
+            # Average loss for this epoch
+            avg_loss = running_loss / len(data_loader["train"])
+            self.train_loss_history.append(avg_loss)
+            self.lr_history.append(current_lr)
 
             self.save_model(epoch)
 
             # Validation logic
             if not self.config.TEST.USE_LAST_EPOCH:
                 valid_loss = self.valid(data_loader)
+
+                self.valid_loss_history.append(valid_loss)
+
                 print('validation loss: ', valid_loss)
                 if self.min_valid_loss is None or (valid_loss < self.min_valid_loss):
                     self.min_valid_loss = valid_loss
                     self.best_epoch = epoch
                     print("Update best model! Best epoch:", self.best_epoch)
+
+            # Now, if PLOT_LOSSES_AND_LR is True, call the plotting function
+            if self.config.TRAIN.PLOT_LOSSES_AND_LR:
+                # Pass the entire history so far. 
+                self.plot_losses_and_lrs(
+                    train_loss=self.train_loss_history,
+                    valid_loss=self.valid_loss_history,
+                    lrs=self.lr_history,
+                    config=self.config
+                )
 
             torch.cuda.empty_cache()
 
