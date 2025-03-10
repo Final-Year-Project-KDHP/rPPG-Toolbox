@@ -107,10 +107,10 @@ class PhysMambaTrainer(BaseTrainer):
                 # If your label is purely [N, 1], you might not need extra squeezing.
 
                 label = label.mean(dim=1, keepdim=True)
-                print("-----------------averaged label shape:",label.shape)
+                # print("-----------------averaged label shape:",label.shape)
 
                 label = label.squeeze()
-                print("-----------------averaged squeezed label shape:",label.shape)
+                # print("-----------------averaged squeezed label shape:",label.shape)
 
 
                 self.optimizer.zero_grad()
@@ -233,13 +233,13 @@ class PhysMambaTrainer(BaseTrainer):
         with torch.no_grad():
             for _, test_batch in enumerate(tqdm(data_loader["test"], ncols=80)):
 
-                print("-------------debugging test_batch:",test_batch)
+                # print("-------------debugging test_batch:",test_batch)
 
                 batch_size = test_batch[0].shape[0]
                 data, label = test_batch[0].to(self.device), test_batch[1].to(self.device)
 
                 label = label.mean(dim=1, keepdim=True)# mean over the channel dimension
-                print("-----------------averaged label :",label)
+                # print("-----------------averaged label :",label)
 
 
                 # Forward pass
@@ -259,7 +259,7 @@ class PhysMambaTrainer(BaseTrainer):
                         predictions[subj_index] = dict()
                         labels[subj_index] = dict()
 
-                    print("-------------debugging pred_spo2_test:",pred_spo2_test)
+                    # print("-------------debugging pred_spo2_test:",pred_spo2_test)
 
                     # You can store these in predictions/labels for further analysis
                     predictions[subj_index][sort_index] = pred_spo2_test[idx]
@@ -267,7 +267,7 @@ class PhysMambaTrainer(BaseTrainer):
 
         print('')
         # If you have a custom SpO2-based metric, you could call it here
-        calculate_metrics(predictions, labels, self.config)
+        # calculate_metrics(predictions, labels, self.config)
 
         if self.config.TEST.OUTPUT_SAVE_DIR:  # saving test outputs 
             self.save_test_outputs(predictions, labels, self.config)
