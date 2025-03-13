@@ -183,6 +183,30 @@ class PhysMamba(nn.Module):
 
         self.fc = nn.Linear(frames, 1)
 
+    #     self.fc_layers = nn.Sequential(
+    #     nn.Linear(in_features=frames, out_features=64),
+    #     nn.BatchNorm1d(64),
+    #     nn.ReLU(),
+    #     nn.Linear(64, 32),
+    #     nn.BatchNorm1d(32),
+    #     nn.ReLU(),
+    #     nn.Linear(32, 1)
+    # )
+
+    #     self.fc_layers = nn.Sequential(
+    #     nn.Linear(in_features=frames, out_features=64),
+    #     nn.BatchNorm1d(64),
+    #     nn.LeakyReLU(negative_slope=0.01),  # LeakyReLU with a small negative slope
+    #     nn.Linear(64, 32),
+    #     nn.BatchNorm1d(32),
+    #     nn.LeakyReLU(negative_slope=0.01),  # LeakyReLU applied again
+    #     nn.Linear(32, 1)
+    # )
+
+
+
+
+
 
     def _build_block(self, channels, theta):
         return nn.Sequential(
@@ -248,9 +272,12 @@ class PhysMamba(nn.Module):
 
         # print("-------------model before fc output shape: ",rPPG.shape)
 
-        output = self.fc(rPPG)
+        output_pre = self.fc(rPPG)
 
-        print("-------------model output shape: ",output.shape)
 
+        # output=self.fc_layers(rPPG)
+
+        # print("-------------model output shape: ",output.shape)
+        output = 100 * torch.sigmoid(output_pre)
 
         return output

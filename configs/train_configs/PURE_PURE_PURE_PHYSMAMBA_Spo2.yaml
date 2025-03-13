@@ -4,7 +4,7 @@ TRAIN:
   BATCH_SIZE: 8
   EPOCHS: 20
   LR: 3e-3
-  MODEL_FILE_NAME: PURE_PURE_PURE_PhysMambaSF_SpO2
+  MODEL_FILE_NAME: PURE_PURE_PURE_PhysMambaSF_SpO2_fc_sig_20ep
   PLOT_LOSSES_AND_LR: True
   DATA:
     FS: 30
@@ -100,7 +100,7 @@ LOG:
 MODEL:
   NAME: PhysMambaSF
 INFERENCE:
-  BATCH_SIZE: 4
+  BATCH_SIZE: 8
   EVALUATION_METHOD: "FFT"              # Options: "FFT" or "peak detection"
   EVALUATION_WINDOW:
     USE_SMALLER_WINDOW: False

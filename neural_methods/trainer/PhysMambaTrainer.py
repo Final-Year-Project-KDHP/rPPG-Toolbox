@@ -127,7 +127,7 @@ class PhysMambaTrainer(BaseTrainer):
                 # If your model outputs shape [N] or [N, 1], unify them:
                 if len(pred_spo2.shape) > 1:
                     pred_spo2 = pred_spo2.squeeze()
-                print("-----------------pred spo2 squeezed:",pred_spo2.shape)
+                # print("-----------------pred spo2 squeezed:",pred_spo2.shape)
 
 
                 # Calculate RMSE (you could do MSE; here, we demonstrate RMSE)
