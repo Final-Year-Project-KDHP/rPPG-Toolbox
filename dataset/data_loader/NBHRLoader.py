@@ -71,7 +71,7 @@ class NBHRLoader(BaseLoader):
             bvps = self.generate_pos_psuedo_labels(frames, fs=self.config_data.FS)
         else:
             data_dir = os.path.abspath(os.path.join(data_dirs[i]['path'], "..", ".."))
-            hr_bvps, spo2_bvps = self.read_wave(os.path.join(data_dir, "PPG", "{0}.csv".format(saved_filename)))
+            hr_bvps, spo2_bvps = self.read_wave(os.path.join(data_dir, "PPG_reconstructed", "{0}.csv".format(saved_filename)))
 
         hr_bvps = BaseLoader.resample_ppg(hr_bvps, frames.shape[0])
         spo2_bvps = BaseLoader.resample_ppg(spo2_bvps, frames.shape[0])

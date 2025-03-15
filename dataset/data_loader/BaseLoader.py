@@ -16,16 +16,17 @@ from unsupervised_methods.methods import POS_WANG
 from unsupervised_methods import utils
 import math
 from multiprocessing import Pool, Process, Value, Array, Manager
+from scipy.signal import welch
 
 import cv2
 import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from retinaface import RetinaFace   # Source code: https://github.com/serengil/retinaface
+# from retinaface import RetinaFace   # Source code: https://github.com/serengil/retinaface
 import torch
 import sys
-sys.path.append("/home/ddew0188/ASK/yoloface")
+sys.path.append("/content/yoloface")
 from face_detector import YoloDetector
 
 
@@ -227,6 +228,39 @@ class BaseLoader(Dataset):
         self.load_preprocessed_data()  # load all data and corresponding labels (sorted for consistency)
         print("Total Number of raw files preprocessed:", len(data_dirs_split), end='\n\n')
 
+    def get_hr(self, y, sr=30, min=40, max=180):
+        p, q = welch(y, sr, nfft=1e5/sr, nperseg=np.min((len(y)-1, 256)))
+        return p[np.argmax(q)]*60
+
+    def filter_reconstruncted_signal(self, chunk_arr):
+        # standard_reconstructed_signal = standardized_label(reconstructed_signal)
+        # chunk_arr = np.array_split(reconstructed_signal, len(reconstructed_signal) / (input_sampling_rate * window_time))
+        # if len(chunk_arr[-1]) < input_sampling_rate * window_time:
+        #     chunk_arr = chunk_arr[:-1]
+        hr_arr = np.array([self.get_hr(chunk) for chunk in chunk_arr])
+        # print(hr_arr)
+        sorted_hr_array = np.sort(hr_arr)
+        range_counts = []
+        for idx in range(len(sorted_hr_array)):
+            count = 1
+            for jdx in range(idx+1, len(hr_arr)):
+                if sorted_hr_array[jdx] < sorted_hr_array[idx] + 30:
+                    count += 1
+                else:
+                    break
+            range_counts.append(count)
+        max_count_idx = np.argmax(range_counts)
+        noisy_ind = np.where(hr_arr < sorted_hr_array[max_count_idx])[0]
+        clean_ind = np.where(hr_arr >= sorted_hr_array[max_count_idx])[0]
+
+        for idx in range(len(sorted_hr_array)-1,-1,-1):
+            chunk = chunk_arr[idx]
+            if self.get_hr(chunk) > 190:
+                noisy_ind = np.append(noisy_ind, idx)
+                clean_ind = np.delete(clean_ind, np.where(clean_ind == idx))
+
+        return clean_ind, noisy_ind
+
     def preprocess(self, frames, hr_bvps, spo2_bvps, config_preprocess, filename):
         """Preprocesses a pair of data.
 
@@ -277,6 +311,8 @@ class BaseLoader(Dataset):
         if config_preprocess.DO_CHUNK:  # chunk data into snippets
             frames_clips, hr_bvps_clips, spo2_bvps_clips = self.chunk(
                 data, hr_bvps_standard, hr_bvps, spo2_bvps, config_preprocess.CHUNK_LENGTH)
+            clean_ind, noisy_ind = self.filter_reconstruncted_signal(hr_bvps_clips)
+            frames_clips, hr_bvps_clips, spo2_bvps_clips = frames_clips[clean_ind], hr_bvps_clips[clean_ind], spo2_bvps_clips[clean_ind]
         else:
             frames_clips = np.array([data])
             hr_bvps_clips = np.array([hr_bvps_standard])
@@ -297,6 +333,8 @@ class BaseLoader(Dataset):
       """
       #print(f"Invalid backend '{backend}'. Defaulting to YOLOv5.")
       #backend= "YOLOv5"
+      left_rotated = False
+      right_rotated = False
       if backend == "YOLOv5":
         frame_height, frame_width = frame.shape[:2]
 #         target_size = min(frame_height, frame_width)
@@ -321,14 +359,16 @@ class BaseLoader(Dataset):
                 if len(bboxes[0]) == 0:
                     return 0
                 else:
-                    face_box_coor = [bboxes[0][0][1], frame_height-bboxes[0][0][2], bboxes[0][0][3], frame_height-bboxes[0][0][0]]
+                    left_rotated = True
+                    # face_box_coor = [bboxes[0][0][1], frame_height-bboxes[0][0][2], bboxes[0][0][3], frame_height-bboxes[0][0][0]]
             else:
-                face_box_coor = [frame_width-bboxes[0][0][3], bboxes[0][0][0], frame_width-bboxes[0][0][1], bboxes[0][0][2]]
+                right_rotated = True
+                # face_box_coor = [frame_width-bboxes[0][0][3], bboxes[0][0][0], frame_width-bboxes[0][0][1], bboxes[0][0][2]]
             # return 0
             # face_box_coor = [0, 0, frame.shape[1], frame.shape[0]]  # Use entire frame as fallback
-        else:
+        # else:
             # print(f"Face Detected in {filename}")
-            face_box_coor = bboxes[0][0] # Use the first detected bounding box
+        face_box_coor = bboxes[0][0] # Use the first detected bounding box
       elif backend == "HC":
           # Use OpenCV's Haar Cascade algorithm implementation for face detection
           detector = cv2.CascadeClassifier('./dataset/haarcascade_frontalface_default.xml')
@@ -343,47 +383,47 @@ class BaseLoader(Dataset):
               print("Warning: More than one face detected. Cropping the largest one.")
           else:
               face_box_coor = face_zone[0]
-      elif backend == "RF":
-          # Use RetinaFace for face detection
-          res = RetinaFace.detect_faces(frame)
-          print("Type of res:", type(res))  # Debug: Print the type of `res`
-          if isinstance(res, tuple):
-              if len(res)>= 2:  # Assume tuple contains (bounding_boxes, scores)
-                  print("First element:", res[0])
-                  print("Second element:", res[1])
-                  bounding_boxes, scores = res
-                  if len(bounding_boxes) > 0:
-                      # Pick the bounding box with the highest score
-                      highest_score_idx = np.argmax(scores)
-                      face_zone = bounding_boxes[highest_score_idx]
-                      x_min, y_min, x_max, y_max = face_zone
-                      x = x_min
-                      y = y_min
-                      width = x_max - x_min
-                      height = y_max - y_min
-                      face_box_coor = [x, y, width, height]
-                  else:
-                      print("No faces detected in tuple.")
-                      face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
-              else:
-                  print("Unexpected tuple structure:", res)
-                  face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
-          elif isinstance(res, dict):
-              if len(res) > 0:
-                  highest_score_face = max(res.values(), key=lambda x: x['score'])
-                  face_zone = highest_score_face['facial_area']
-                  x_min, y_min, x_max, y_max = face_zone
-                  x = x_min
-                  y = y_min
-                  width = x_max - x_min
-                  height = y_max - y_min
-                  face_box_coor = [x, y, width, height]
-              else:
-                  print("Empty dictionary: No faces detected.")
-                  face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
-          else:
-              print("ERROR: Unexpected return type from RetinaFace.detect_faces():", type(res))
-              face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
+      # elif backend == "RF":
+      #     # Use RetinaFace for face detection
+      #     res = RetinaFace.detect_faces(frame)
+      #     print("Type of res:", type(res))  # Debug: Print the type of `res`
+      #     if isinstance(res, tuple):
+      #         if len(res)>= 2:  # Assume tuple contains (bounding_boxes, scores)
+      #             print("First element:", res[0])
+      #             print("Second element:", res[1])
+      #             bounding_boxes, scores = res
+      #             if len(bounding_boxes) > 0:
+      #                 # Pick the bounding box with the highest score
+      #                 highest_score_idx = np.argmax(scores)
+      #                 face_zone = bounding_boxes[highest_score_idx]
+      #                 x_min, y_min, x_max, y_max = face_zone
+      #                 x = x_min
+      #                 y = y_min
+      #                 width = x_max - x_min
+      #                 height = y_max - y_min
+      #                 face_box_coor = [x, y, width, height]
+      #             else:
+      #                 print("No faces detected in tuple.")
+      #                 face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
+      #         else:
+      #             print("Unexpected tuple structure:", res)
+      #             face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
+      #     elif isinstance(res, dict):
+      #         if len(res) > 0:
+      #             highest_score_face = max(res.values(), key=lambda x: x['score'])
+      #             face_zone = highest_score_face['facial_area']
+      #             x_min, y_min, x_max, y_max = face_zone
+      #             x = x_min
+      #             y = y_min
+      #             width = x_max - x_min
+      #             height = y_max - y_min
+      #             face_box_coor = [x, y, width, height]
+      #         else:
+      #             print("Empty dictionary: No faces detected.")
+      #             face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
+      #     else:
+      #         print("ERROR: Unexpected return type from RetinaFace.detect_faces():", type(res))
+      #         face_box_coor = [0, 0, frame.shape[0], frame.shape[1]]
       else:
           raise ValueError("Unsupported face detection backend!")
 
@@ -393,7 +433,7 @@ class BaseLoader(Dataset):
           face_box_coor[1] = max(0, face_box_coor[1] - (larger_box_coef - 1.0) / 2 * face_box_coor[3])
           face_box_coor[2] = larger_box_coef * face_box_coor[2]
           face_box_coor[3] = larger_box_coef * face_box_coor[3]
-      return face_box_coor
+      return face_box_coor, left_rotated, right_rotated
 
 
     def crop_face_resize(self, frames, use_face_detection, backend, use_larger_box, larger_box_coef, use_dynamic_detection, 
@@ -416,7 +456,7 @@ class BaseLoader(Dataset):
             resized_frames(list[np.array(float)]): Resized and cropped frames
         """
         # If not detected, turn on dynamic detection
-        box_coor = self.face_detection(frames[0], backend, use_larger_box, larger_box_coef, filename)
+        box_coor, left_rotated, right_rotated = self.face_detection(frames[0], backend, use_larger_box, larger_box_coef, filename)
         if box_coor == 0:
             print(f"Using Dynamic detection for {filename}")
             use_dynamic_detection = True
@@ -430,7 +470,7 @@ class BaseLoader(Dataset):
         # Perform face detection by num_dynamic_det" times.
         for idx in range(num_dynamic_det):
             if use_face_detection:
-                box_coor = self.face_detection(frames[detection_freq * idx], backend, use_larger_box, larger_box_coef, filename)
+                box_coor, left_rotated, right_rotated = self.face_detection(frames[detection_freq * idx], backend, use_larger_box, larger_box_coef, filename)
                 if box_coor != 0:
                     face_region_all.append(box_coor)
                     break
@@ -446,6 +486,11 @@ class BaseLoader(Dataset):
 
         # Frame Resizing
         resized_frames = np.zeros((frames.shape[0], height, width, 3))
+        if left_rotated:
+            frames = np.array([cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE) for frame in frames])
+        elif right_rotated:
+            frames = np.array([cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE) for frame in frames])
+  
         for i in range(0, frames.shape[0]):
             frame = frames[i]
             if use_dynamic_detection:  # use the (i // detection_freq)-th facial region.
@@ -482,9 +527,9 @@ class BaseLoader(Dataset):
         # bvps_clips = [bvps[i * chunk_length:(i + 1) * chunk_length] for i in range(clip_num)]
         for i in range(clip_num):
             hr_clip = np.array(hr_bvps[i * chunk_length:(i + 1) * chunk_length])
-            if np.count_nonzero(arr == 127) > 10:
+            if np.count_nonzero(hr_clip == 127) > 10:
                 continue
-            elif np.count_nonzero(arr == 0) > 10:
+            elif np.count_nonzero(hr_clip == 0) > 10:
                 continue
             hr_bvp_clip = hr_bvps_standard[i * chunk_length:(i + 1) * chunk_length]
             spo2_bvp_clip = spo2_bvps[i * chunk_length:(i + 1) * chunk_length]
@@ -751,6 +796,6 @@ class BaseLoader(Dataset):
                 1, input_signal.shape[0], target_length), np.linspace(
                 1, input_signal.shape[0], input_signal.shape[0]), input_signal)
 
-    def get_hr(self, y, sr=12, min=30, max=180):
-        p, q = welch(y, sr, nfft=1e5/sr, nperseg=np.min((len(y)-1, 256)))
-        return p[(p>min/60)&(p<max/60)][np.argmax(q[(p>min/60)&(p<max/60)])]*60
+    # def get_hr(self, y, sr=12, min=30, max=180):
+    #     p, q = welch(y, sr, nfft=1e5/sr, nperseg=np.min((len(y)-1, 256)))
+    #     return p[(p>min/60)&(p<max/60)][np.argmax(q[(p>min/60)&(p<max/60)])]*60
