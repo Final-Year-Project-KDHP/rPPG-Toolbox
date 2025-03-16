@@ -357,7 +357,7 @@ class BaseLoader(Dataset):
                 left_rotated_frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
                 bboxes, points = model.predict(left_rotated_frame)
                 if len(bboxes[0]) == 0:
-                    return 0
+                    return 0, left_rotated, right_rotated
                 else:
                     left_rotated = True
                     # face_box_coor = [bboxes[0][0][1], frame_height-bboxes[0][0][2], bboxes[0][0][3], frame_height-bboxes[0][0][0]]
