@@ -26,7 +26,7 @@ from tqdm import tqdm
 # from retinaface import RetinaFace   # Source code: https://github.com/serengil/retinaface
 import torch
 import sys
-sys.path.append("/content/yoloface")
+sys.path.append("/home/ddew0188/ASK/yoloface")
 from face_detector import YoloDetector
 
 
@@ -560,6 +560,8 @@ class BaseLoader(Dataset):
             self.labels.append(label_path_name)
             np.save(input_path_name, frames_clips[i])
             np.save(label_path_name, bvps_clips[i])
+            if np.all(bvps_clips[i] == 0):
+                print(f"ERROR: {filename} has all 0 values in {count}th chunk")
             count += 1
         return count
 
@@ -587,6 +589,8 @@ class BaseLoader(Dataset):
             label_path_name_list.append(label_path_name)
             np.save(input_path_name, frames_clips[i])
             np.save(label_path_name, np.array([hr_bvps_clips[i], spo2_bvps_clips[i]]))
+            if np.all(hr_bvps_clips[i] == 0):
+                print(f"ERROR: {filename} has all 0 values in {count}th chunk")
             count += 1
         return input_path_name_list, label_path_name_list
 

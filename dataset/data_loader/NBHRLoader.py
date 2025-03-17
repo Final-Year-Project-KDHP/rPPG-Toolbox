@@ -40,6 +40,9 @@ class NBHRLoader(BaseLoader):
         data_dirs = glob.glob(data_path + os.sep + "video" + os.sep + "*.avi")
         if not data_dirs:
             raise ValueError(self.dataset_name + " data paths empty!")
+        corrupted_file_path = data_path + os.sep + "video" + os.sep + "20201004090731.avi"
+        if corrupted_file_path in data_dirs:
+            data_dirs.remove(corrupted_file_path)
         dirs = [{"index": int(os.path.split(data_dir)[-1].replace(".avi", "")), "path": data_dir} for data_dir in data_dirs]
         return dirs
 

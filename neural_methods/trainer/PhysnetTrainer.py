@@ -183,6 +183,7 @@ class PhysnetTrainer(BaseTrainer):
                 batch_size = test_batch[0].shape[0]
                 data, label = test_batch[0].to(
                     self.config.DEVICE), test_batch[1].to(self.config.DEVICE)
+                label = np.squeeze(label[:,0:1,:], axis=1)
                 pred_ppg_test, _, _, _ = self.model(data)
 
                 if self.config.TEST.OUTPUT_SAVE_DIR:
@@ -211,6 +212,6 @@ class PhysnetTrainer(BaseTrainer):
         torch.save(self.model.state_dict(), model_path)
         print('Saved Model Path: ', model_path)
 
-    def get_hr(self, y, sr=12, min=30, max=180):
+    def get_hr(self, y, sr=30, min=30, max=180):
         p, q = welch(y, sr, nfft=1e5/sr, nperseg=np.min((len(y)-1, 256)))
         return p[(p>min/60)&(p<max/60)][np.argmax(q[(p>min/60)&(p<max/60)])]*60
