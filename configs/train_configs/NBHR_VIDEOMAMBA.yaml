@@ -7,12 +7,12 @@ TRAIN:
   MODEL_FILE_NAME: NBHR_NBHR_physnet_diffnormalized
   PLOT_LOSSES_AND_LR: True
   DATA:
-    FS: 12
+    FS: 30
     DATASET: NBHR
     DO_PREPROCESS: False            # if first time, should be true
     DATA_FORMAT: NCDHW
     DATA_PATH: "/content/drive/MyDrive/Datasets/NBHR"                     # Raw dataset path, need to be updated
-    CACHED_PATH: "/content/drive/MyDrive/HR/PhysFormer/NBHR_standarized_label"    # Processed dataset save path, need to be updated
+    CACHED_PATH: "/home/ddew0188/ASK/HR/Filtered"    # Processed dataset save path, need to be updated
     EXP_DATA_NAME: ""
     BEGIN: 0.0
     END: 0.7
@@ -36,12 +36,12 @@ TRAIN:
         W: 128
 VALID:
   DATA:
-    FS: 12
+    FS: 30
     DATASET: NBHR
     DO_PREPROCESS: False                # if first time, should be true
     DATA_FORMAT: NCDHW
     DATA_PATH: "/content/drive/MyDrive/Datasets/NBHR"                     # Raw dataset path, need to be updated
-    CACHED_PATH: "/content/drive/MyDrive/HR/PhysFormer/NBHR_standarized_label"    # Processed dataset save path, need to be updated
+    CACHED_PATH: "/home/ddew0188/ASK/HR/Filtered"    # Processed dataset save path, need to be updated
     EXP_DATA_NAME: ""
     BEGIN: 0.7
     END: 0.9
@@ -67,12 +67,12 @@ TEST:
   METRICS: ['MAE', 'RMSE', 'MAPE', 'Pearson', 'SNR', 'BA']
   USE_LAST_EPOCH: False                   # to use provided validation dataset to find the best epoch, should be false
   DATA:
-    FS: 12
+    FS: 30
     DATASET: NBHR
     DO_PREPROCESS: False                  # if first time, should be true
     DATA_FORMAT: NCDHW
     DATA_PATH: "/content/drive/MyDrive/Datasets/NBHR"                     # Raw dataset path, need to be updated
-    CACHED_PATH: "/content/drive/MyDrive/HR/PhysFormer/NBHR_standarized_label"    # Processed dataset save path, need to be updated
+    CACHED_PATH: "/home/ddew0188/ASK/HR/Filtered"    # Processed dataset save path, need to be updated
     EXP_DATA_NAME: ""
     BEGIN: 0.9
     END: 1.0

@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 
-class PhysNet(nn.Module):
+class PhysNet_padding_Encoder_Decoder_MAX(nn.Module):
     def __init__(self, frames=60):
-        super(PhysNet, self).__init__()
+        super(PhysNet_padding_Encoder_Decoder_MAX, self).__init__()
         
         self.ConvBlock1 = nn.Sequential(
             nn.Conv3d(3, 16, (1, 5, 5), stride=1, padding=(0, 2, 2)),
@@ -60,7 +60,7 @@ class PhysNet(nn.Module):
         self.poolspa = nn.AdaptiveAvgPool3d((frames, 1, 1))
         
         # LSTM layers
-        self.lstm_1 = nn.LSTM(60, 32, batch_first=True, bidirectional=True)
+        self.lstm_1 = nn.LSTM(1, 32, batch_first=True, bidirectional=True)
         self.lstm_2 = nn.LSTM(64, 24, batch_first=True, bidirectional=True)
         self.lstm_3 = nn.LSTM(48, 8, batch_first=True, bidirectional=True)
         self.lstm_4 = nn.LSTM(16, 1, batch_first=True)
@@ -88,16 +88,22 @@ class PhysNet(nn.Module):
         x = self.ConvBlock10(x)
 
         rPPG = x.view(batch_size, length)
+        # print(rPPG.shape)
         
         # LSTM layers
-        x, _ = self.lstm_1(rPPG.unsqueeze(-1))
-        x, _ = self.lstm_2(x)
-        x, _ = self.lstm_3(x)
-        x, _ = self.lstm_4(x)
+        # x, _ = self.lstm_1(rPPG.unsqueeze(-1))
         
-        x = x.squeeze(-1)
-        x = torch.tanh(self.fc1(x))
-        x = self.dropout(x)
-        HR_out = torch.relu(self.fc2(x))
+        # x, _ = self.lstm_2(x)
         
-        return rPPG, HR_out
+        # x, _ = self.lstm_3(x)
+        # x, _ = self.lstm_4(x)
+        
+        
+        # x = x.squeeze(-1)
+        # x = torch.tanh(self.fc1(x))
+        
+        # x = self.dropout(x)
+        # HR_out = self.fc2(x)
+        # print(HR_out)
+        
+        return rPPG

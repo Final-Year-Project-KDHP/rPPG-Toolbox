@@ -62,29 +62,37 @@ class PhysnetTrainer(BaseTrainer):
             tbar = tqdm(data_loader["train"], ncols=80)
             for idx, batch in enumerate(tbar):
                 tbar.set_description("Train epoch %s" % epoch)
-                rPPG, HRout = self.model(
+                rPPG = self.model(
                     batch[0].to(torch.float32).to(self.device))
+                
+                # print(rPPG.shape)
                 BVP_label = np.squeeze(batch[1][:,0:1,:], axis=1).to(
                     torch.float32).to(self.device)
+                if idx % 50 == 0:
+                    print(BVP_label)
                 rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
                 BVP_label = (BVP_label - torch.mean(BVP_label)) / \
                             torch.std(BVP_label)  # normalize
-                # loss = self.loss_model(rPPG, BVP_label)
-                hrs = []
-                for _1, _2 in zip(HRout, BVP_label):
-                    hrs.append((_1.cpu().detach().numpy(), self.get_hr(_2.cpu().detach().numpy())))
-                RMSE_loss = np.mean([(i-j)**2 for i, j in hrs])**0.5
-                if torch.isinf(RMSE_loss) or torch.isnan(RMSE_loss):
-                    print("Skip the batch")
+                loss = self.loss_model(rPPG, BVP_label)
+                # hrs = []
+                # for _1, _2 in zip(HRout, BVP_label):
+                #     hr = (_1, torch.tensor(self.get_hr(_2.cpu().detach().numpy()), device=_2.device))
+                #     hrs.append(hr)
+                    
+                # hrs = torch.stack([torch.abs(i - j) for i, j in hrs])
+                # RMSE_loss = torch.sqrt(torch.mean(hrs ** 2))
+                if torch.isinf(loss) or torch.isnan(loss):
+                    # print(loss)
                     continue
                 
-                RMSE_loss.backward()
-                running_loss += RMSE_loss.item()
+                loss.backward()
+                # RMSE_loss.backward()
+                running_loss += loss.item()
                 if idx % 100 == 99:  # print every 100 mini-batches
-                    print(
-                        f'[{epoch}, {idx + 1:5d}] loss: {running_loss / 100:.3f}')
+                    # print(
+                    #     f'[{epoch}, {idx + 1:5d}] loss: {running_loss / 100:.3f}')
                     running_loss = 0.0
-                train_loss.append(RMSE_loss.item())
+                train_loss.append(loss.item())
 
                 # Append the current learning rate to the list
                 lrs.append(self.scheduler.get_last_lr())
@@ -92,7 +100,7 @@ class PhysnetTrainer(BaseTrainer):
                 self.optimizer.step()
                 self.scheduler.step()
                 self.optimizer.zero_grad()
-                tbar.set_postfix(loss=RMSE_loss.item())
+                tbar.set_postfix(loss=loss.item())
 
             # Append the mean training loss for the epoch
             mean_training_losses.append(np.mean(train_loss))
@@ -133,7 +141,7 @@ class PhysnetTrainer(BaseTrainer):
                 vbar.set_description("Validation")
                 BVP_label = np.squeeze(valid_batch[1][:,0:1,:], axis=1).to(
                     torch.float32).to(self.device)
-                rPPG, x_visual, x_visual3232, x_visual1616 = self.model(
+                rPPG = self.model(
                     valid_batch[0].to(torch.float32).to(self.device))
                 rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
                 BVP_label = (BVP_label - torch.mean(BVP_label)) / \
@@ -215,6 +223,6 @@ class PhysnetTrainer(BaseTrainer):
         torch.save(self.model.state_dict(), model_path)
         print('Saved Model Path: ', model_path)
 
-    def get_hr(self, y, sr=12, min=30, max=180):
+    def get_hr(self, y, sr=30, min=30, max=180):
         p, q = welch(y, sr, nfft=1e5/sr, nperseg=np.min((len(y)-1, 256)))
         return p[(p>min/60)&(p<max/60)][np.argmax(q[(p>min/60)&(p<max/60)])]*60
