@@ -239,19 +239,16 @@ class BaseLoader(Dataset):
         #     chunk_arr = chunk_arr[:-1]
         hr_arr = np.array([self.get_hr(chunk) for chunk in chunk_arr])
         # print(hr_arr)
-        sorted_hr_array = np.sort(hr_arr)
-        range_counts = []
+        sorted_hr_array = np.sort(hr_arr)[::-1]
         for idx in range(len(sorted_hr_array)):
-            count = 1
-            for jdx in range(idx+1, len(hr_arr)):
-                if sorted_hr_array[jdx] < sorted_hr_array[idx] + 30:
-                    count += 1
-                else:
-                    break
-            range_counts.append(count)
-        max_count_idx = np.argmax(range_counts)
-        noisy_ind = np.where(hr_arr < sorted_hr_array[max_count_idx])[0]
-        clean_ind = np.where(hr_arr >= sorted_hr_array[max_count_idx])[0]
+            if sorted_hr_array[idx] > 190:
+                continue
+            else:
+                break
+
+        # max_count_idx = np.argmax(range_counts)
+        noisy_ind = np.where(hr_arr < sorted_hr_array[idx]-30)[0]
+        clean_ind = np.where(hr_arr >= sorted_hr_array[idx]-30)[0]
 
         for idx in range(len(sorted_hr_array)-1,-1,-1):
             chunk = chunk_arr[idx]
