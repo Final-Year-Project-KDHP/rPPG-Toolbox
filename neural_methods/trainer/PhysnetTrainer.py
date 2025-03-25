@@ -6,12 +6,14 @@ import numpy as np
 import torch
 import torch.optim as optim
 from evaluation.metrics import calculate_metrics
+from evaluation.post_process import calculate_fft_hr
 from neural_methods.loss.PhysNetNegPearsonLoss import Neg_Pearson
 from neural_methods.model.PhysNet import PhysNet_padding_Encoder_Decoder_MAX
 from neural_methods.trainer.BaseTrainer import BaseTrainer
 from torch.autograd import Variable
 from tqdm import tqdm
 from scipy.signal import welch
+import json
 
 class PhysnetTrainer(BaseTrainer):
 
@@ -200,9 +202,13 @@ class PhysnetTrainer(BaseTrainer):
                     labels[subj_index][sort_index] = label[idx]
 
         print('')
+        
         calculate_metrics(predictions, labels, self.config)
         if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs 
             self.save_test_outputs(predictions, labels, self.config)
+            differences = self.save_differences(predictions, labels)
+            with open(os.path.join(self.config.TEST.OUTPUT_SAVE_DIR, 'differences.json'), 'w') as f:
+                json.dump(differences, f)
 
     def save_model(self, index):
         if not os.path.exists(self.model_dir):
@@ -215,3 +221,19 @@ class PhysnetTrainer(BaseTrainer):
     def get_hr(self, y, sr=30, min=30, max=180):
         p, q = welch(y, sr, nfft=1e5/sr, nperseg=np.min((len(y)-1, 256)))
         return p[(p>min/60)&(p<max/60)][np.argmax(q[(p>min/60)&(p<max/60)])]*60
+
+    def save_differences(self, predictions, labels):
+        """Calculate the differences between the predicted and ground truth heart rates."""
+        differences = dict()
+        for key in predictions.keys():
+            differences[key] = dict()
+            for idx in predictions[key].keys():
+                differences[key][idx] = dict()
+                pred_hr = self.get_hr(predictions[key][idx])
+                label_hr = self.get_hr(labels[key][idx])
+                diff = pred_hr - label_hr
+                differences[key][idx]["difference"] = diff
+                differences[key][idx]["pred_hr"] = pred_hr
+                differences[key][idx]["label_hr"] = label_hr
+        return differences
+        

@@ -32,7 +32,7 @@ def power2db(mag):
     """Convert power to db."""
     return 10 * np.log10(mag)
 
-def _calculate_fft_hr(ppg_signal, fs=60, low_pass=0.75, high_pass=2.5):
+def calculate_fft_hr(ppg_signal, fs=30, low_pass=0.75, high_pass=3):
     """Calculate heart rate based on PPG using Fast Fourier transform (FFT)."""
     ppg_signal = np.expand_dims(ppg_signal, 0)
     N = _next_power_of_2(ppg_signal.shape[1])
@@ -138,8 +138,8 @@ def calculate_metric_per_video(predictions, labels, fs=30, diff_flag=True, use_b
     macc = _compute_macc(predictions, labels)
 
     if hr_method == 'FFT':
-        hr_pred = _calculate_fft_hr(predictions, fs=fs)
-        hr_label = _calculate_fft_hr(labels, fs=fs)
+        hr_pred = calculate_fft_hr(predictions, fs=fs)
+        hr_label = calculate_fft_hr(labels, fs=fs)
     elif hr_method == 'Peak':
         hr_pred = _calculate_peak_hr(predictions, fs=fs)
         hr_label = _calculate_peak_hr(labels, fs=fs)
