@@ -131,7 +131,7 @@ def calculate_metric_per_video(predictions, labels, fs=30, diff_flag=True, use_b
     if use_bandpass:
         # bandpass filter between [0.75, 2.5] Hz
         # equals [45, 150] beats per min
-        [b, a] = butter(1, [0.75 / fs * 2, 2.5 / fs * 2], btype='bandpass')
+        [b, a] = butter(1, [0.75 / fs * 2, 3 / fs * 2], btype='bandpass')
         predictions = scipy.signal.filtfilt(b, a, np.double(predictions))
         labels = scipy.signal.filtfilt(b, a, np.double(labels))
     
