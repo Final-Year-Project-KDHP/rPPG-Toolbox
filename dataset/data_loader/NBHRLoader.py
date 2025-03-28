@@ -79,9 +79,10 @@ class NBHRLoader(BaseLoader):
         hr_bvps = BaseLoader.resample_ppg(hr_bvps, frames.shape[0])
         spo2_bvps = BaseLoader.resample_ppg(spo2_bvps, frames.shape[0])
             
-        frames_clips, hr_bvps_clips, spo2_bvps_clips = self.preprocess(frames, hr_bvps, spo2_bvps, config_preprocess, filename)
-        input_name_list, label_name_list = self.save_multi_process(frames_clips, hr_bvps_clips, spo2_bvps_clips, saved_filename)
-        file_list_dict[i] = input_name_list
+        frames_clips, hr_bvps_clips, spo2_bvps_clips, face_detected = self.preprocess(frames, hr_bvps, spo2_bvps, config_preprocess, filename)
+        if face_detected:
+            input_name_list, label_name_list = self.save_multi_process(frames_clips, hr_bvps_clips, spo2_bvps_clips, saved_filename)
+            file_list_dict[i] = input_name_list
 
     def load_preprocessed_data(self):
         """ Loads the preprocessed data listed in the file list.

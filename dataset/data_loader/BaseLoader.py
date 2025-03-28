@@ -270,7 +270,7 @@ class BaseLoader(Dataset):
             bvps_clips(np.array): processed bvp (ppg) labels by frames
         """
         # resize frames and crop for face region
-        frames = self.crop_face_resize(
+        frames, face_detected = self.crop_face_resize(
             frames,
             config_preprocess.CROP_FACE.DO_CROP_FACE,
             config_preprocess.CROP_FACE.BACKEND,
@@ -299,7 +299,7 @@ class BaseLoader(Dataset):
         if config_preprocess.LABEL_TYPE == "Raw":
             pass
         elif config_preprocess.LABEL_TYPE == "DiffNormalized":
-            hr_bvps = BaseLoader.diff_normalize_label(hr_bvps)
+            hr_bvps_standard = BaseLoader.diff_normalize_label(hr_bvps)
         elif config_preprocess.LABEL_TYPE == "Standardized":
             hr_bvps_standard = BaseLoader.standardized_label(hr_bvps)
         else:
@@ -315,7 +315,7 @@ class BaseLoader(Dataset):
             hr_bvps_clips = np.array([hr_bvps_standard])
             spo2_bvps_clips = np.array([spo2_bvps])
 
-        return frames_clips, hr_bvps_clips, spo2_bvps_clips
+        return frames_clips, hr_bvps_clips, spo2_bvps_clips, face_detected
 
     def face_detection(self, frame, backend, use_larger_box=False, larger_box_coef=1.0, filename=None):
       """Face detection on a single frame.
@@ -332,6 +332,7 @@ class BaseLoader(Dataset):
       #backend= "YOLOv5"
       left_rotated = False
       right_rotated = False
+      upside_down = False
       if backend == "YOLOv5":
         frame_height, frame_width = frame.shape[:2]
 #         target_size = min(frame_height, frame_width)
@@ -354,7 +355,12 @@ class BaseLoader(Dataset):
                 left_rotated_frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
                 bboxes, points = model.predict(left_rotated_frame)
                 if len(bboxes[0]) == 0:
-                    return 0, left_rotated, right_rotated
+                    upside_down_frame = cv2.rotate(frame, cv2.ROTATE_180)
+                    bboxes, points = model.predict(upside_down_frame)
+                    if len(bboxes[0]) == 0:
+                        return 0, left_rotated, right_rotated, upside_down
+                    else:
+                        upside_down = True
                 else:
                     left_rotated = True
                     # face_box_coor = [bboxes[0][0][1], frame_height-bboxes[0][0][2], bboxes[0][0][3], frame_height-bboxes[0][0][0]]
@@ -430,7 +436,7 @@ class BaseLoader(Dataset):
           face_box_coor[1] = max(0, face_box_coor[1] - (larger_box_coef - 1.0) / 2 * face_box_coor[3])
           face_box_coor[2] = larger_box_coef * face_box_coor[2]
           face_box_coor[3] = larger_box_coef * face_box_coor[3]
-      return face_box_coor, left_rotated, right_rotated
+      return face_box_coor, left_rotated, right_rotated, upside_down
 
 
     def crop_face_resize(self, frames, use_face_detection, backend, use_larger_box, larger_box_coef, use_dynamic_detection, 
@@ -452,8 +458,9 @@ class BaseLoader(Dataset):
         Returns:
             resized_frames(list[np.array(float)]): Resized and cropped frames
         """
+        face_detected = True
         # If not detected, turn on dynamic detection
-        box_coor, left_rotated, right_rotated = self.face_detection(frames[0], backend, use_larger_box, larger_box_coef, filename)
+        box_coor, left_rotated, right_rotated, upside_down = self.face_detection(frames[0], backend, use_larger_box, larger_box_coef, filename)
         if box_coor == 0:
             print(f"Using Dynamic detection for {filename}")
             use_dynamic_detection = True
@@ -474,6 +481,7 @@ class BaseLoader(Dataset):
             else:
                 face_region_all.append([0, 0, frames.shape[1], frames.shape[2]])
         if not face_region_all:
+            face_detected = False
             print(f"ERROR: Face not Detected in {filename}")
             face_region_all.append([0, 0, frames.shape[1], frames.shape[2]])
         face_region_all = np.asarray(face_region_all, dtype='int')
@@ -487,6 +495,8 @@ class BaseLoader(Dataset):
             frames = np.array([cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE) for frame in frames])
         elif right_rotated:
             frames = np.array([cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE) for frame in frames])
+        elif upside_down:
+            frames = np.array([cv2.rotate(frame, cv2.ROTATE_180) for frame in frames])
   
         for i in range(0, frames.shape[0]):
             frame = frames[i]
@@ -502,7 +512,7 @@ class BaseLoader(Dataset):
                 frame = frame[max(face_region[1], 0):min(face_region[1] + face_region[3], frame.shape[0]),
                         max(face_region[0], 0):min(face_region[0] + face_region[2], frame.shape[1])]
             resized_frames[i] = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
-        return resized_frames
+        return resized_frames, face_detected
 
     def chunk(self, frames, hr_bvps_standard, hr_bvps, spo2_bvps, chunk_length):
         """Chunk the data into small chunks.
