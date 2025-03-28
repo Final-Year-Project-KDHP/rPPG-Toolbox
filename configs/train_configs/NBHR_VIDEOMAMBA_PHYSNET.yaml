@@ -1,5 +1,5 @@
 BASE: ['']
-TOOLBOX_MODE: "only_test"  # "train_and_test"  or "only_test"
+TOOLBOX_MODE: "train_and_test"  # "train_and_test"  or "only_test"
 TRAIN:
   BATCH_SIZE: 4
   EPOCHS: 30
@@ -9,7 +9,7 @@ TRAIN:
   DATA:
     FS: 30
     DATASET: NBHR
-    DO_PREPROCESS: False            # if first time, should be true
+    DO_PREPROCESS: True            # if first time, should be true
     DATA_FORMAT: NCDHW
     DATA_PATH: "/home/ddew0188/ASK/HR/datasets/NBHR"                     # Raw dataset path, need to be updated
     CACHED_PATH: "/srv/videopulse/filtered_algo_changed"    # Processed dataset save path, need to be updated
@@ -38,7 +38,7 @@ VALID:
   DATA:
     FS: 30
     DATASET: NBHR
-    DO_PREPROCESS: False                # if first time, should be true
+    DO_PREPROCESS: True                # if first time, should be true
     DATA_FORMAT: NCDHW
     DATA_PATH: "/home/ddew0188/ASK/HR/datasets/NBHR"                     # Raw dataset path, need to be updated
     CACHED_PATH: "/srv/videopulse/filtered_algo_changed"    # Processed dataset save path, need to be updated
@@ -69,7 +69,7 @@ TEST:
   DATA:
     FS: 30
     DATASET: NBHR
-    DO_PREPROCESS: False                  # if first time, should be true
+    DO_PREPROCESS: True                  # if first time, should be true
     DATA_FORMAT: NCDHW
     DATA_PATH: "/home/ddew0188/ASK/HR/datasets/NBHR"                     # Raw dataset path, need to be updated
     CACHED_PATH: "/srv/videopulse/filtered_algo_changed"    # Processed dataset save path, need to be updated

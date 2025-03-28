@@ -474,7 +474,7 @@ class BaseLoader(Dataset):
         # Perform face detection by num_dynamic_det" times.
         for idx in range(num_dynamic_det):
             if use_face_detection:
-                box_coor, left_rotated, right_rotated = self.face_detection(frames[detection_freq * idx], backend, use_larger_box, larger_box_coef, filename)
+                box_coor, left_rotated, right_rotated, upside_down = self.face_detection(frames[detection_freq * idx], backend, use_larger_box, larger_box_coef, filename)
                 if box_coor != 0:
                     face_region_all.append(box_coor)
                     break
