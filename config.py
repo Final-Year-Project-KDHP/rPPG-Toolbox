@@ -20,7 +20,6 @@ _C.TOOLBOX_MODE = ""
 _C.TRAIN = CN()
 _C.TRAIN.EPOCHS = 50
 _C.TRAIN.BATCH_SIZE = 4
-_C.TRAIN.CONTINUE_TRAIN = False
 _C.TRAIN.LR = 1e-4
 # Optimizer
 _C.TRAIN.OPTIMIZER = CN()
@@ -89,6 +88,10 @@ _C.TRAIN.DATA.PREPROCESS.BIGSMALL.RESIZE.BIG_W = 144
 _C.TRAIN.DATA.PREPROCESS.BIGSMALL.RESIZE.BIG_H = 144
 _C.TRAIN.DATA.PREPROCESS.BIGSMALL.RESIZE.SMALL_W = 9
 _C.TRAIN.DATA.PREPROCESS.BIGSMALL.RESIZE.SMALL_H = 9
+_C.TRAIN.DATA.PREPROCESS.IBVP = CN()
+_C.TRAIN.DATA.PREPROCESS.IBVP.DATA_MODE = 'RGB'
+
+
 # -----------------------------------------------------------------------------
 # Valid settings
 # -----------------------------------------------------------------------------\
@@ -150,6 +153,8 @@ _C.VALID.DATA.PREPROCESS.BIGSMALL.RESIZE.BIG_W = 144
 _C.VALID.DATA.PREPROCESS.BIGSMALL.RESIZE.BIG_H = 144
 _C.VALID.DATA.PREPROCESS.BIGSMALL.RESIZE.SMALL_W = 9
 _C.VALID.DATA.PREPROCESS.BIGSMALL.RESIZE.SMALL_H = 9
+_C.VALID.DATA.PREPROCESS.IBVP = CN()
+_C.VALID.DATA.PREPROCESS.IBVP.DATA_MODE = 'RGB'
 
 # -----------------------------------------------------------------------------
 # Test settings
@@ -215,7 +220,8 @@ _C.TEST.DATA.PREPROCESS.BIGSMALL.RESIZE.BIG_W = 144
 _C.TEST.DATA.PREPROCESS.BIGSMALL.RESIZE.BIG_H = 144
 _C.TEST.DATA.PREPROCESS.BIGSMALL.RESIZE.SMALL_W = 9
 _C.TEST.DATA.PREPROCESS.BIGSMALL.RESIZE.SMALL_H = 9
-
+_C.TEST.DATA.PREPROCESS.IBVP = CN()
+_C.TEST.DATA.PREPROCESS.IBVP.DATA_MODE = 'RGB'
 # -----------------------------------------------------------------------------
 # Unsupervised method settings
 # -----------------------------------------------------------------------------\
@@ -272,7 +278,8 @@ _C.UNSUPERVISED.DATA.PREPROCESS.CROP_FACE.DETECTION.USE_MEDIAN_FACE_BOX = False
 _C.UNSUPERVISED.DATA.PREPROCESS.RESIZE = CN()
 _C.UNSUPERVISED.DATA.PREPROCESS.RESIZE.W = 128
 _C.UNSUPERVISED.DATA.PREPROCESS.RESIZE.H = 128
-
+_C.UNSUPERVISED.DATA.PREPROCESS.IBVP = CN()
+_C.UNSUPERVISED.DATA.PREPROCESS.IBVP.DATA_MODE = 'RGB'
 ### -----------------------------------------------------------------------------
 # Model settings
 # -----------------------------------------------------------------------------
@@ -293,7 +300,23 @@ _C.MODEL.PHYSNET.FRAME_NUM = 64
 # Specific parameters for iBVPNet parameters
 # -----------------------------------------------------------------------------
 _C.MODEL.iBVPNet = CN()
-_C.MODEL.iBVPNet.FRAME_NUM = 64
+_C.MODEL.iBVPNet.FRAME_NUM = 160
+_C.MODEL.iBVPNet.CHANNELS = 3
+# -----------------------------------------------------------------------------
+# Specific parameters for FactorizePhys parameters
+# -----------------------------------------------------------------------------
+_C.MODEL.FactorizePhys = CN()
+_C.MODEL.FactorizePhys.FRAME_NUM = 160
+_C.MODEL.FactorizePhys.CHANNELS = 3
+_C.MODEL.FactorizePhys.TYPE = "Standard"
+_C.MODEL.FactorizePhys.MD_FSAM = False
+_C.MODEL.FactorizePhys.MD_TYPE = 'NMF'
+_C.MODEL.FactorizePhys.MD_TRANSFORM = 'T_KAB'
+_C.MODEL.FactorizePhys.MD_R = 1
+_C.MODEL.FactorizePhys.MD_S = 1
+_C.MODEL.FactorizePhys.MD_STEPS = 4
+_C.MODEL.FactorizePhys.MD_INFERENCE = True
+_C.MODEL.FactorizePhys.MD_RESIDUAL = True
 
 # -----------------------------------------------------------------------------
 # Model Settings for TS-CAN
