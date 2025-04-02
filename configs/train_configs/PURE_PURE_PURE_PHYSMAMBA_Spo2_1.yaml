@@ -4,7 +4,7 @@ TRAIN:
   BATCH_SIZE: 8
   EPOCHS: 100
   LR: 4e-4
-  MODEL_FILE_NAME: PURE_PURE_PURE_PhysMambaSF_SpO2_fc_sig_round_100ep_LR4e-4_k=10
+  MODEL_FILE_NAME: PURE_PURE_PURE_PhysMambaSF_SpO2_fc_sig_round_100ep_LR4e-4_k=400
   PLOT_LOSSES_AND_LR: True
   DATA:
     FS: 30

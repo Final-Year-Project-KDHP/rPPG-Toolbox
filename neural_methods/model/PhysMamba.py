@@ -5,6 +5,44 @@ from timm.models.layers import trunc_normal_, DropPath
 from mamba_ssm import Mamba
 from torch.nn import functional as F
 
+def safe_exp(x: torch.Tensor) -> torch.Tensor:
+    """
+    Smooth alternative to torch.exp to prevent overflow.
+    Keeps x smoothly bounded by using tanh(x / 100) * 100 inside the exponent.
+    """
+    return torch.exp(torch.tanh(x / 400) * 400)
+
+def rounding_sigmoid_approximation(x: torch.Tensor, k: float, n_max: int = 100) -> torch.Tensor:
+    """
+    Vectorized, differentiable sigmoid-based approximation of a rounding function,
+    using a safe_exp to avoid overflow issues.
+    
+    Returns the same shape as the input.
+    """
+    # Convert x to float64 for more stable summations
+    x = x.to(torch.float64)
+    
+    # Create a tensor of all integer n values in the range [-n_max, ..., n_max]
+    # shape: [2 * n_max + 1]
+    n_values = torch.arange(-n_max, n_max + 1, dtype=torch.float64, device=x.device)  
+    
+    # Expand x and n_values for broadcasting
+    x_expanded = x.unsqueeze(-1)               # shape: [batch_size, 1, 1]
+    n_expanded = n_values.view(1, 1, -1)       # shape: [1, 1, 2*n_max+1]
+    
+    exponent1 = -k * (x_expanded - n_expanded + 0.5)  # [batch_size, 1, 2*n_max+1]
+    exponent2 = -k * (x_expanded - n_expanded - 0.5)  # [batch_size, 1, 2*n_max+1]
+    
+    # Compute "safe" exponent terms
+    term1 = n_expanded / (1 + safe_exp(exponent1))    # [batch_size, 1, 2*n_max+1]
+    term2 = n_expanded / (1 + safe_exp(exponent2))    # [batch_size, 1, 2*n_max+1]
+    
+    # Summation over the last dimension (the n-values dimension),
+    # and squeeze the unnecessary dimension
+    result = (term1 - term2).sum(dim=-1, keepdim=True).squeeze(-1)  # [batch_size, 1]
+    
+    return result
+
 class ChannelAttention3D(nn.Module):
     def __init__(self, in_channels, reduction):
         super(ChannelAttention3D, self).__init__()
@@ -277,7 +315,9 @@ class PhysMamba(nn.Module):
 
         # output=self.fc_layers(rPPG)
 
-        # print("-------------model output shape: ",output.shape)
-        output = 100 * torch.sigmoid(output_pre)
+        # print("-------------model output shape: ",output_pre.shape)
+        output_pre_round = 100 * torch.sigmoid(output_pre)
+
+        output = (output_pre_round, 10)
 
         return output
