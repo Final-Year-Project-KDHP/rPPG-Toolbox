@@ -79,6 +79,8 @@ def train_and_test(config, data_loader_dict):
         model_trainer = trainer.PhysFormerTrainer.PhysFormerTrainer(config, data_loader_dict)
     elif config.MODEL.NAME == "FactorizePhys":
         model_trainer = trainer.FactorizePhysTrainer.FactorizePhysTrainer(config, data_loader_dict)
+    elif config.MODEL.NAME == 'PhysMamba':
+        model_trainer = trainer.PhysMambaTrainer.PhysMambaTrainer(config, data_loader_dict)
     else:
         raise ValueError('Your Model is Not Supported  Yet!')
     model_trainer.train(data_loader_dict)
@@ -103,6 +105,8 @@ def test(config, data_loader_dict):
         model_trainer = trainer.PhysFormerTrainer.PhysFormerTrainer(config, data_loader_dict)
     elif config.MODEL.NAME == "FactorizePhys":
         model_trainer = trainer.FactorizePhysTrainer.FactorizePhysTrainer(config, data_loader_dict)
+    elif config.MODEL.NAME == 'PhysMamba':
+        model_trainer = trainer.PhysMambaTrainer.PhysMambaTrainer(config, data_loader_dict)
     else:
         raise ValueError('Your Model is Not Supported  Yet!')
     model_trainer.test(data_loader_dict)
@@ -166,6 +170,8 @@ if __name__ == "__main__":
             train_loader = data_loader.VIPLLoader.VIPLLoader
         elif config.TRAIN.DATA.DATASET == "NBHR":
             train_loader = data_loader.NBHRLoader.NBHRLoader
+        elif config.TRAIN.DATA.DATASET == "VIDEOPULSE":
+            train_loader = data_loader.VIDEOPULSELoader.VIDEOPULSELoader
         else:
             raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
                              SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP.")
@@ -213,6 +219,8 @@ if __name__ == "__main__":
             raise ValueError("Validation dataset not specified despite USE_LAST_EPOCH set to False!")
         elif config.TRAIN.DATA.DATASET == "NBHR":
             valid_loader = data_loader.NBHRLoader.NBHRLoader
+        elif config.TRAIN.DATA.DATASET == "VIDEOPULSE":
+            valid_loader = data_loader.VIDEOPULSELoader.VIDEOPULSELoader
         else:
             raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
                              SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP")
@@ -253,10 +261,12 @@ if __name__ == "__main__":
             test_loader = data_loader.UBFCPHYSLoader.UBFCPHYSLoader
         elif config.TEST.DATA.DATASET == "iBVP":
             test_loader = data_loader.iBVPLoader.iBVPLoader
-        elif config.TRAIN.DATA.DATASET == "VIPL-HR":
+        elif config.TEST.DATA.DATASET == "VIPL-HR":
             test_loader = data_loader.VIPLLoader.VIPLLoader
-        elif config.TRAIN.DATA.DATASET == "NBHR":
+        elif config.TEST.DATA.DATASET == "NBHR":
             test_loader = data_loader.NBHRLoader.NBHRLoader
+        elif config.TEST.DATA.DATASET == "VIDEOPULSE":
+            test_loader = data_loader.VIDEOPULSELoader.VIDEOPULSELoader
         else:
             raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
                              SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP.")
