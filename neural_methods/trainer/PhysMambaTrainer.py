@@ -104,7 +104,9 @@ class PhysMambaTrainer(BaseTrainer):
                 data = data.to(self.device)
                 label = label.to(self.device)
 
-                # print("-----------------label shape:",label.shape)
+                print("-----------------label shape:",label.shape)
+                label = label[:, 1, :]  # SpO2 signal
+                print("-----------------spo2 label shape:",label.shape)
 
                 # Example: If label dimension is [N, 1, T] or [N, X, ...], 
                 # and you only need a single scalar target, you might do:

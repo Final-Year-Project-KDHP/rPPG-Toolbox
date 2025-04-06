@@ -47,8 +47,10 @@ class PURELoader(BaseLoader):
     def get_raw_data(self, data_path):
         """Returns data directories under the path(For PURE dataset)."""
 
+        data_path="/home/ddew0188/storage/PURE"
         data_dirs = glob.glob(data_path + os.sep + "*-*")
         if not data_dirs:
+            print(data_path)
             raise ValueError(self.dataset_name + " data paths empty!")
         dirs = list()
         for data_dir in data_dirs:

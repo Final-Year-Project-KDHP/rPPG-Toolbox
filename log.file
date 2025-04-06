@@ -1,0 +1,346 @@
+=> Merging a config file from /home/ddew0188/videopulse/rppg-toolbox/rppg-toolbox1/configs/train_configs/PURE_PURE_PURE_PHYSMAMBA_Spo2.yaml
+-----------------Print config dir: runs/exp/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse/saved_test_outputs
+Configuration:
+BASE: ['']
+DEVICE: cuda:0
+INFERENCE:
+  BATCH_SIZE: 8
+  EVALUATION_METHOD: FFT
+  EVALUATION_WINDOW:
+    USE_SMALLER_WINDOW: False
+    WINDOW_SIZE: 10
+  MODEL_PATH: /home/ddew0188/videopulse/rppg-toolbox/rppg-toolbox/runs/exp/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse/storage/PhysMambaSF_sp/TrainedModels/PURE_PURE_PURE_PhysMambaSF_SpO2_fc_sig_20ep_LR1e-3_Epoch9.pth
+LOG:
+  PATH: runs/exp
+MODEL:
+  BIGSMALL:
+    FRAME_DEPTH: 3
+  DROP_RATE: 0.0
+  EFFICIENTPHYS:
+    FRAME_DEPTH: 10
+  MODEL_DIR: runs/exp/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse/storage/PhysMambaSF_sp/TrainedModels
+  NAME: PhysMambaSFwithmultispo2
+  PHYSFORMER:
+    DIM: 96
+    FF_DIM: 144
+    NUM_HEADS: 4
+    NUM_LAYERS: 12
+    PATCH_SIZE: 4
+    THETA: 0.7
+  PHYSNET:
+    FRAME_NUM: 64
+  RESUME: 
+  TSCAN:
+    FRAME_DEPTH: 10
+  iBVPNet:
+    CHANNELS: 3
+    FRAME_NUM: 160
+NUM_OF_GPU_TRAIN: 1
+TEST:
+  DATA:
+    BEGIN: 0.8
+    CACHED_PATH: /home/ddew0188/storage/PhysMambaSF_sp_mlti/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse
+    DATASET: PURE
+    DATA_FORMAT: NCDHW
+    DATA_PATH: storage/PURE
+    DO_PREPROCESS: True
+    END: 1.0
+    EXP_DATA_NAME: PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse
+    FILE_LIST_PATH: /home/ddew0188/storage/PhysMambaSF_sp_mlti/DataFileLists/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse_0.8_1.0.csv
+    FILTERING:
+      EXCLUSION_LIST: ['']
+      SELECT_TASKS: False
+      TASK_LIST: ['']
+      USE_EXCLUSION_LIST: False
+    FOLD:
+      FOLD_NAME: 
+      FOLD_PATH: 
+    FS: 30
+    INFO:
+      EXERCISE: [True]
+      GENDER: ['']
+      GLASSER: [True]
+      HAIR_COVER: [True]
+      LIGHT: ['']
+      MAKEUP: [True]
+      MOTION: ['']
+      SKIN_COLOR: [1]
+    PREPROCESS:
+      BIGSMALL:
+        BIG_DATA_TYPE: ['']
+        RESIZE:
+          BIG_H: 144
+          BIG_W: 144
+          SMALL_H: 9
+          SMALL_W: 9
+        SMALL_DATA_TYPE: ['']
+      CHUNK_LENGTH: 128
+      CROP_FACE:
+        BACKEND: HC
+        DETECTION:
+          DO_DYNAMIC_DETECTION: False
+          DYNAMIC_DETECTION_FREQUENCY: 30
+          USE_MEDIAN_FACE_BOX: False
+        DO_CROP_FACE: True
+        LARGE_BOX_COEF: 1.5
+        USE_LARGE_FACE_BOX: True
+      DATA_AUG: ['None']
+      DATA_TYPE: ['DiffNormalized']
+      DO_CHUNK: True
+      IBVP:
+        DATA_MODE: RGB
+      LABEL_TYPE: DiffNormalized
+      RESIZE:
+        H: 128
+        W: 128
+      USE_PSUEDO_PPG_LABEL: False
+  METRICS: ['MAE', 'RMSE', 'MAPE', 'Pearson', 'SNR', 'BA']
+  OUTPUT_SAVE_DIR: runs/exp/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse/saved_test_outputs
+  USE_LAST_EPOCH: False
+TOOLBOX_MODE: train_and_test
+TRAIN:
+  BATCH_SIZE: 8
+  DATA:
+    BEGIN: 0.0
+    CACHED_PATH: /home/ddew0188/storage/PhysMambaSF_sp_mlti/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse
+    DATASET: PURE
+    DATA_FORMAT: NCDHW
+    DATA_PATH: storage/PURE
+    DO_PREPROCESS: True
+    END: 0.8
+    EXP_DATA_NAME: PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse
+    FILE_LIST_PATH: /home/ddew0188/storage/PhysMambaSF_sp_mlti/DataFileLists/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse_0.0_0.8.csv
+    FILTERING:
+      EXCLUSION_LIST: ['']
+      SELECT_TASKS: False
+      TASK_LIST: ['']
+      USE_EXCLUSION_LIST: False
+    FOLD:
+      FOLD_NAME: 
+      FOLD_PATH: 
+    FS: 30
+    INFO:
+      EXERCISE: [True]
+      GENDER: ['']
+      GLASSER: [True]
+      HAIR_COVER: [True]
+      LIGHT: ['']
+      MAKEUP: [True]
+      MOTION: ['']
+      SKIN_COLOR: [1]
+    PREPROCESS:
+      BIGSMALL:
+        BIG_DATA_TYPE: ['']
+        RESIZE:
+          BIG_H: 144
+          BIG_W: 144
+          SMALL_H: 9
+          SMALL_W: 9
+        SMALL_DATA_TYPE: ['']
+      CHUNK_LENGTH: 128
+      CROP_FACE:
+        BACKEND: HC
+        DETECTION:
+          DO_DYNAMIC_DETECTION: False
+          DYNAMIC_DETECTION_FREQUENCY: 30
+          USE_MEDIAN_FACE_BOX: False
+        DO_CROP_FACE: True
+        LARGE_BOX_COEF: 1.5
+        USE_LARGE_FACE_BOX: True
+      DATA_AUG: ['None']
+      DATA_TYPE: ['DiffNormalized']
+      DO_CHUNK: True
+      IBVP:
+        DATA_MODE: RGB
+      LABEL_TYPE: DiffNormalized
+      RESIZE:
+        H: 128
+        W: 128
+      USE_PSUEDO_PPG_LABEL: False
+  EPOCHS: 100
+  LR: 0.0004
+  MODEL_FILE_NAME: PURE_PURE_PURE_PhysMambaSF_SpO2_fc_sig_round_100ep_LR4e-4_k=10_mlti+sp02
+  OPTIMIZER:
+    BETAS: (0.9, 0.999)
+    EPS: 0.0001
+    MOMENTUM: 0.9
+  PLOT_LOSSES_AND_LR: True
+UNSUPERVISED:
+  DATA:
+    BEGIN: 0.0
+    CACHED_PATH: PreprocessedData/_SizeW128_SizeH128_ClipLength180_DataType_DataAugNone_LabelType_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse_unsupervised
+    DATASET: 
+    DATA_FORMAT: NDCHW
+    DATA_PATH: 
+    DO_PREPROCESS: False
+    END: 1.0
+    EXP_DATA_NAME: _SizeW128_SizeH128_ClipLength180_DataType_DataAugNone_LabelType_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse_unsupervised
+    FILE_LIST_PATH: PreprocessedData/DataFileLists/_SizeW128_SizeH128_ClipLength180_DataType_DataAugNone_LabelType_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse_unsupervised_0.0_1.0.csv
+    FILTERING:
+      EXCLUSION_LIST: ['']
+      SELECT_TASKS: False
+      TASK_LIST: ['']
+      USE_EXCLUSION_LIST: False
+    FOLD:
+      FOLD_NAME: 
+      FOLD_PATH: 
+    FS: 0
+    INFO:
+      EXERCISE: [True]
+      GENDER: ['']
+      GLASSER: [True]
+      HAIR_COVER: [True]
+      LIGHT: ['']
+      MAKEUP: [True]
+      MOTION: ['']
+      SKIN_COLOR: [1]
+    PREPROCESS:
+      CHUNK_LENGTH: 180
+      CROP_FACE:
+        BACKEND: HC
+        DETECTION:
+          DO_DYNAMIC_DETECTION: False
+          DYNAMIC_DETECTION_FREQUENCY: 30
+          USE_MEDIAN_FACE_BOX: False
+        DO_CROP_FACE: True
+        LARGE_BOX_COEF: 1.5
+        USE_LARGE_FACE_BOX: True
+      DATA_AUG: ['None']
+      DATA_TYPE: ['']
+      DO_CHUNK: True
+      IBVP:
+        DATA_MODE: RGB
+      LABEL_TYPE: 
+      RESIZE:
+        H: 128
+        W: 128
+      USE_PSUEDO_PPG_LABEL: False
+  METHOD: []
+  METRICS: []
+  OUTPUT_SAVE_DIR: 
+VALID:
+  DATA:
+    BEGIN: 0.8
+    CACHED_PATH: /home/ddew0188/storage/PhysMambaSF_sp_mlti/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse
+    DATASET: PURE
+    DATA_FORMAT: NCDHW
+    DATA_PATH: storage/PURE
+    DO_PREPROCESS: True
+    END: 1.0
+    EXP_DATA_NAME: PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse
+    FILE_LIST_PATH: /home/ddew0188/storage/PhysMambaSF_sp_mlti/DataFileLists/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse_0.8_1.0.csv
+    FILTERING:
+      EXCLUSION_LIST: ['']
+      SELECT_TASKS: False
+      TASK_LIST: ['']
+      USE_EXCLUSION_LIST: False
+    FOLD:
+      FOLD_NAME: 
+      FOLD_PATH: 
+    FS: 30
+    INFO:
+      EXERCISE: [True]
+      GENDER: ['']
+      GLASSER: [True]
+      HAIR_COVER: [True]
+      LIGHT: ['']
+      MAKEUP: [True]
+      MOTION: ['']
+      SKIN_COLOR: [1]
+    PREPROCESS:
+      BIGSMALL:
+        BIG_DATA_TYPE: ['']
+        RESIZE:
+          BIG_H: 144
+          BIG_W: 144
+          SMALL_H: 9
+          SMALL_W: 9
+        SMALL_DATA_TYPE: ['']
+      CHUNK_LENGTH: 128
+      CROP_FACE:
+        BACKEND: HC
+        DETECTION:
+          DO_DYNAMIC_DETECTION: False
+          DYNAMIC_DETECTION_FREQUENCY: 30
+          USE_MEDIAN_FACE_BOX: False
+        DO_CROP_FACE: True
+        LARGE_BOX_COEF: 1.5
+        USE_LARGE_FACE_BOX: True
+      DATA_AUG: ['None']
+      DATA_TYPE: ['DiffNormalized']
+      DO_CHUNK: True
+      IBVP:
+        DATA_MODE: RGB
+      LABEL_TYPE: DiffNormalized
+      RESIZE:
+        H: 128
+        W: 128
+      USE_PSUEDO_PPG_LABEL: False
+
+Preprocessing dataset...
+  0%|          | 0/47 [00:00<?, ?it/s]  2%|▏         | 1/47 [00:19<14:41, 19.16s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+  4%|▍         | 2/47 [00:20<06:30,  8.69s/it]  6%|▋         | 3/47 [00:20<03:29,  4.77s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+  9%|▊         | 4/47 [00:21<02:14,  3.12s/it] 13%|█▎        | 6/47 [00:21<01:03,  1.54s/it] 15%|█▍        | 7/47 [00:23<01:07,  1.70s/it] 17%|█▋        | 8/47 [00:24<00:51,  1.33s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+ 19%|█▉        | 9/47 [00:45<04:28,  7.06s/it] 21%|██▏       | 10/47 [00:45<03:10,  5.15s/it] 26%|██▌       | 12/47 [00:45<01:39,  2.84s/it] 28%|██▊       | 13/47 [00:46<01:15,  2.22s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+ 30%|██▉       | 14/47 [00:47<01:04,  1.97s/it] 32%|███▏      | 15/47 [00:47<00:47,  1.49s/it] 34%|███▍      | 16/47 [00:47<00:35,  1.13s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+ 36%|███▌      | 17/47 [01:03<02:37,  5.26s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+ 38%|███▊      | 18/47 [01:04<02:00,  4.14s/it] 40%|████      | 19/47 [01:06<01:33,  3.34s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+ 43%|████▎     | 20/47 [01:06<01:06,  2.47s/it] 45%|████▍     | 21/47 [01:07<00:47,  1.84s/it] 47%|████▋     | 22/47 [01:07<00:38,  1.55s/it] 49%|████▉     | 23/47 [01:08<00:30,  1.27s/it] 51%|█████     | 24/47 [01:08<00:22,  1.01it/s] 53%|█████▎    | 25/47 [01:22<01:48,  4.92s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+ 55%|█████▌    | 26/47 [01:29<01:54,  5.45s/it] 57%|█████▋    | 27/47 [01:31<01:24,  4.25s/it]ERROR: No Face Detected
+ 62%|██████▏   | 29/47 [01:31<00:42,  2.38s/it] 64%|██████▍   | 30/47 [01:31<00:32,  1.89s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+ 66%|██████▌   | 31/47 [01:32<00:25,  1.59s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+ 68%|██████▊   | 32/47 [01:33<00:19,  1.29s/it] 70%|███████   | 33/47 [01:37<00:29,  2.11s/it] 72%|███████▏  | 34/47 [01:50<01:08,  5.24s/it] 74%|███████▍  | 35/47 [01:56<01:05,  5.44s/it] 77%|███████▋  | 36/47 [01:56<00:42,  3.89s/it] 83%|████████▎ | 39/47 [01:58<00:16,  2.11s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+ 85%|████████▌ | 40/47 [01:58<00:12,  1.72s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+Warning: More than one faces are detected. Only cropping the biggest one.
+ 89%|████████▉ | 42/47 [02:03<00:09,  1.91s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+ 91%|█████████▏| 43/47 [02:10<00:11,  2.99s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+Warning: More than one faces are detected. Only cropping the biggest one.
+Warning: More than one faces are detected. Only cropping the biggest one.
+ 94%|█████████▎| 44/47 [02:12<00:08,  2.83s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+100%|██████████| 47/47 [02:12<00:00,  1.48s/it]100%|██████████| 47/47 [02:12<00:00,  2.83s/it]
+Total Number of raw files preprocessed: 47
+
+Cached Data Path /home/ddew0188/storage/PhysMambaSF_sp_mlti/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse
+
+File List Path /home/ddew0188/storage/PhysMambaSF_sp_mlti/DataFileLists/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse_0.0_0.8.csv
+ train Preprocessed Dataset Length: 743
+
+Preprocessing dataset...
+  0%|          | 0/12 [00:00<?, ?it/s]  8%|▊         | 1/12 [00:24<04:25, 24.12s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+Warning: More than one faces are detected. Only cropping the biggest one.
+ 42%|████▏     | 5/12 [00:26<00:29,  4.15s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+Warning: More than one faces are detected. Only cropping the biggest one.
+ 75%|███████▌  | 9/12 [00:38<00:10,  3.46s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+ 83%|████████▎ | 10/12 [00:38<00:05,  2.98s/it]100%|██████████| 12/12 [00:38<00:00,  3.24s/it]
+Total Number of raw files preprocessed: 12
+
+Cached Data Path /home/ddew0188/storage/PhysMambaSF_sp_mlti/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse
+
+File List Path /home/ddew0188/storage/PhysMambaSF_sp_mlti/DataFileLists/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse_0.8_1.0.csv
+ valid Preprocessed Dataset Length: 192
+
+Preprocessing dataset...
+  0%|          | 0/12 [00:00<?, ?it/s]  8%|▊         | 1/12 [00:17<03:08, 17.13s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+Warning: More than one faces are detected. Only cropping the biggest one.
+ 17%|█▋        | 2/12 [00:25<01:57, 11.72s/it] 42%|████▏     | 5/12 [00:25<00:23,  3.37s/it] 58%|█████▊    | 7/12 [00:27<00:12,  2.48s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+ 75%|███████▌  | 9/12 [00:31<00:06,  2.29s/it]Warning: More than one faces are detected. Only cropping the biggest one.
+Warning: More than one faces are detected. Only cropping the biggest one.
+ 83%|████████▎ | 10/12 [00:38<00:06,  3.29s/it]100%|██████████| 12/12 [00:38<00:00,  3.22s/it]
+Total Number of raw files preprocessed: 12
+
+Cached Data Path /home/ddew0188/storage/PhysMambaSF_sp_mlti/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse
+
+File List Path /home/ddew0188/storage/PhysMambaSF_sp_mlti/DataFileLists/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse_0.8_1.0.csv
+ test Preprocessed Dataset Length: 192
+
+
+====Training Epoch: 0====
+  0%|                                                    | 0/93 [00:00<?, ?it/s]Train epoch 0:   0%|                                     | 0/93 [00:00<?, ?it/s]Train epoch 0:   0%|                                     | 0/93 [00:01<?, ?it/s]
+Traceback (most recent call last):
+  File "main.py", line 321, in <module>
+    train_and_test(config, data_loader_dict)
+  File "main.py", line 90, in train_and_test
+    model_trainer.train(data_loader_dict)
+  File "/home/ddew0188/videopulse/rppg-toolbox/rppg-toolbox1/neural_methods/trainer/PhysMambaTrainer.py", line 129, in train
+    if len(pred_spo2.shape) > 1:
+AttributeError: 'tuple' object has no attribute 'shape'
