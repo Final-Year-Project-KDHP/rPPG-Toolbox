@@ -9,9 +9,7 @@ from tqdm import tqdm
 from scipy.signal import welch
 
 # from neural_methods.model.PhysMambaMultiTask import PhysMambaMultiTask  # <-- import your multi-task model
-
-from neural_methods.model.PhysMamba import PhysMambaMultiTask # <-- import your multi-task model
-
+from neural_methods.model.PhysMamba import PhysMambaMultiTask  # <-- import your multi-task model
 from neural_methods.trainer.BaseTrainer import BaseTrainer
 from neural_methods.loss.PhysNetNegPearsonLoss import Neg_Pearson  # your existing negative Pearson
 from evaluation.metrics import calculate_metrics  # or your custom metric function(s)
@@ -36,6 +34,11 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
         self.frame_rate = config.TRAIN.DATA.FS  # if needed
         self.min_valid_loss = None
         self.best_epoch = 0
+
+        # Initialize loss and LR history for plotting
+        self.train_loss_history = []
+        self.valid_loss_history = []
+        self.lr_history = []
 
         # Model
         self.model = PhysMambaMultiTask(
@@ -92,7 +95,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 tbar.set_description("Train epoch {}".format(epoch))
 
                 data = batch[0].float().to(self.device)   # [B, 3, T, H, W]
-                label = batch[1].float().to(self.device)  # [B, 2, T] (assuming channel 0=HR, 1=SpO2)
+                label = batch[1].float().to(self.device)     # [B, 2, T] (assuming channel 0=HR, 1=SpO2)
                 
                 # 1) Extract the HR signal
                 hr_label = label[:, 0, :]  # shape [B, T]
@@ -115,11 +118,11 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
 
                 # Compute losses
                 hr_loss = self.criterion_hr(rppg_pred, hr_label)        # Negative Pearson
-                spo2_loss = self.criterion_spo2(spo2_pred, spo2_label)  # RMSE
+                spo2_loss = self.criterion_spo2(spo2_pred, spo2_label)    # RMSE
 
                 total_loss = hr_loss + spo2_loss  # Weighted sum if needed
 
-                # Backprop
+                # Backpropagation
                 self.optimizer.zero_grad()
                 total_loss.backward()
                 self.optimizer.step()
@@ -134,18 +137,33 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
 
             avg_loss = running_loss / len(data_loader["train"])
             print(f"Epoch [{epoch}] Avg Train Loss: {avg_loss:.4f}")
+            self.train_loss_history.append(avg_loss)
 
-            # Save model
+            # Record current learning rate (OneCycleLR updates it every step)
+            current_lr = self.scheduler.get_last_lr()[0]
+            self.lr_history.append(current_lr)
+
+            # Save model at the end of each epoch
             self.save_model(epoch)
 
             # Validation
             if not self.config.TEST.USE_LAST_EPOCH:
                 valid_loss = self.valid(data_loader)
                 print("Validation Loss: ", valid_loss)
+                self.valid_loss_history.append(valid_loss)
                 if self.min_valid_loss is None or valid_loss < self.min_valid_loss:
                     self.min_valid_loss = valid_loss
                     self.best_epoch = epoch
                     print("Update best model! Best epoch:", self.best_epoch)
+
+            # Call the plotting function if enabled in the configuration
+            if self.config.TRAIN.PLOT_LOSSES_AND_LR:
+                self.plot_losses_and_lrs(
+                    train_loss=self.train_loss_history,
+                    valid_loss=self.valid_loss_history,
+                    lrs=self.lr_history,
+                    config=self.config
+                )
 
             torch.cuda.empty_cache()
 
@@ -181,7 +199,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 hr_label = (hr_label - hr_label.mean(dim=-1, keepdim=True)) / (hr_label.std(dim=-1, keepdim=True) + 1e-6)
 
                 hr_loss = Neg_Pearson()(rppg_pred, hr_label)
-                spo2_loss = torch.sqrt(torch.mean((spo2_pred - spo2_label)**2))
+                spo2_loss = torch.sqrt(torch.mean((spo2_pred - spo2_label) ** 2))
 
                 total_loss = hr_loss + spo2_loss
                 total_losses.append(total_loss.item())
@@ -236,7 +254,6 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 label = test_batch[1].to(self.device)  # [B, 2, T]
 
                 # In your dataset, test_batch[2] might contain subject IDs, test_batch[3] might contain sort indices
-                # We'll assume they're there. If not, adjust accordingly.
                 subject_ids = test_batch[2]
                 sort_indices = test_batch[3]
 
@@ -267,7 +284,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
 
         # Now you can run your own custom metrics on hr_predictions/spo2_predictions vs. hr_labels/spo2_labels
         # For example:
-        # calculate_metrics(hr_predictions, hr_labels, self.config)   # or something similar
+        # calculate_metrics(hr_predictions, hr_labels, self.config)
         # calculate_metrics(spo2_predictions, spo2_labels, self.config)
 
         # Optionally save outputs
