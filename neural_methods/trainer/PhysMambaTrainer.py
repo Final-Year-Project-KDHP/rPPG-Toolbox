@@ -7,6 +7,8 @@ import torch.optim as optim
 import torch.nn.functional as F
 from tqdm import tqdm
 from scipy.signal import welch
+import matplotlib.pyplot as plt
+from matplotlib.ticker import ScalarFormatter, MaxNLocator
 
 # from neural_methods.model.PhysMambaMultiTask import PhysMambaMultiTask  # <-- import your multi-task model
 from neural_methods.model.PhysMamba import PhysMambaMultiTask  # <-- import your multi-task model
@@ -35,10 +37,16 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
         self.min_valid_loss = None
         self.best_epoch = 0
 
-        # Initialize loss and LR history for plotting
+        # Initialize histories for overall loss and learning rate
         self.train_loss_history = []
         self.valid_loss_history = []
         self.lr_history = []
+
+        # Initialize histories for task-specific losses: HR and SpO2 (for training and validation)
+        self.hr_loss_history = []
+        self.spo2_loss_history = []
+        self.valid_hr_loss_history = []
+        self.valid_spo2_loss_history = []
 
         # Model
         self.model = PhysMambaMultiTask(
@@ -69,7 +77,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
 
             # Losses
             self.criterion_hr = Neg_Pearson()   # for HR
-            # For SpO2, we use RMSE. You can define a custom criterion if you prefer:
+            # For SpO2, we use RMSE.
             self.criterion_spo2 = lambda preds, targets: torch.sqrt(
                 torch.mean((preds - targets) ** 2)
             )
@@ -80,6 +88,48 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
         else:
             raise ValueError("Incorrect toolbox mode for multi-task trainer!")
 
+    def plot_task_losses(self, hr_train, hr_valid, spo2_train, spo2_valid, config):
+        """Plot and save HR loss and SpO2 loss in separate PDF files with validation legends (in yellow)."""
+        output_dir = os.path.join(config.LOG.PATH, config.TRAIN.DATA.EXP_DATA_NAME, 'plots')
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+
+        if config.TOOLBOX_MODE == 'train_and_test':
+            filename_id = self.model_file_name
+        else:
+            raise ValueError('Plotting of losses only supports train_and_test mode!')
+
+        epochs = range(0, len(hr_train))
+
+        # Plot HR Loss
+        plt.figure(figsize=(10, 6))
+        plt.plot(epochs, hr_train, label='Training HR Loss')
+        plt.plot(epochs, hr_valid, color='yellow', label='Validation HR Loss')
+        plt.xlabel('Epoch')
+        plt.ylabel('HR Loss')
+        plt.title(f'{filename_id} HR Losses')
+        plt.legend()
+        plt.xticks(epochs)
+        hr_loss_plot_filename = os.path.join(output_dir, f"{filename_id}_hr_losses.pdf")
+        plt.savefig(hr_loss_plot_filename, dpi=300)
+        plt.close()
+
+        # Plot SpO2 Loss
+        plt.figure(figsize=(10, 6))
+        plt.plot(epochs, spo2_train, label='Training SpO2 Loss')
+        plt.plot(epochs, spo2_valid, color='yellow', label='Validation SpO2 Loss')
+        plt.xlabel('Epoch')
+        plt.ylabel('SpO2 Loss')
+        plt.title(f'{filename_id} SpO2 Losses')
+        plt.legend()
+        plt.xticks(epochs)
+        spo2_loss_plot_filename = os.path.join(output_dir, f"{filename_id}_spo2_losses.pdf")
+        plt.savefig(spo2_loss_plot_filename, dpi=300)
+        plt.close()
+
+        print('Saved HR Loss plot to:', hr_loss_plot_filename)
+        print('Saved SpO2 Loss plot to:', spo2_loss_plot_filename)
+
     def train(self, data_loader):
         """Training routine for the multi-task model."""
         if data_loader["train"] is None:
@@ -89,37 +139,33 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
             print("\n====Training Epoch: {}====".format(epoch))
             self.model.train()
             running_loss = 0.0
+            running_hr_loss = 0.0
+            running_spo2_loss = 0.0
 
             tbar = tqdm(data_loader["train"], ncols=80)
             for idx, batch in enumerate(tbar):
                 tbar.set_description("Train epoch {}".format(epoch))
 
                 data = batch[0].float().to(self.device)   # [B, 3, T, H, W]
-                label = batch[1].float().to(self.device)     # [B, 2, T] (assuming channel 0=HR, 1=SpO2)
-                
-                # 1) Extract the HR signal
+                label = batch[1].float().to(self.device)    # [B, 2, T] (channel 0=HR, 1=SpO2)
+
+                # Extract HR signal and SpO2 label (average over T)
                 hr_label = label[:, 0, :]  # shape [B, T]
-                
-                # 2) Extract the SpO2 label
-                #    If your SpO2 label is also a time series, you might do something else:
-                #    spo2_label = label[:, 1, :] and then reduce to a single scalar if needed.
-                #    Example: single scalar is average across T:
                 spo2_label = label[:, 1, :].mean(dim=-1)  # shape [B]
 
                 # Forward pass
                 rppg_pred, spo2_pred = self.model(data)   # rppg_pred: [B, T], spo2_pred: [B, 1]
 
-                # Some normalizations for HR (optional):
+                # Optional normalization for HR
                 rppg_pred = (rppg_pred - rppg_pred.mean(dim=-1, keepdim=True)) / (rppg_pred.std(dim=-1, keepdim=True) + 1e-6)
                 hr_label = (hr_label - hr_label.mean(dim=-1, keepdim=True)) / (hr_label.std(dim=-1, keepdim=True) + 1e-6)
 
-                # SpO2_pred might be shape [B, 1]. Let's squeeze to [B].
+                # Squeeze SpO2 predictions if needed
                 spo2_pred = spo2_pred.squeeze(-1)
 
                 # Compute losses
-                hr_loss = self.criterion_hr(rppg_pred, hr_label)        # Negative Pearson
-                spo2_loss = self.criterion_spo2(spo2_pred, spo2_label)    # RMSE
-
+                hr_loss = self.criterion_hr(rppg_pred, hr_label)        # Negative Pearson for HR
+                spo2_loss = self.criterion_spo2(spo2_pred, spo2_label)    # RMSE for SpO2
                 total_loss = hr_loss + spo2_loss  # Weighted sum if needed
 
                 # Backpropagation
@@ -129,6 +175,9 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 self.scheduler.step()
 
                 running_loss += total_loss.item()
+                running_hr_loss += hr_loss.item()
+                running_spo2_loss += spo2_loss.item()
+
                 tbar.set_postfix(
                     total=total_loss.item(),
                     hr=hr_loss.item(),
@@ -136,8 +185,13 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 )
 
             avg_loss = running_loss / len(data_loader["train"])
+            avg_hr_loss = running_hr_loss / len(data_loader["train"])
+            avg_spo2_loss = running_spo2_loss / len(data_loader["train"])
+
             print(f"Epoch [{epoch}] Avg Train Loss: {avg_loss:.4f}")
             self.train_loss_history.append(avg_loss)
+            self.hr_loss_history.append(avg_hr_loss)
+            self.spo2_loss_history.append(avg_spo2_loss)
 
             # Record current learning rate (OneCycleLR updates it every step)
             current_lr = self.scheduler.get_last_lr()[0]
@@ -148,20 +202,31 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
 
             # Validation
             if not self.config.TEST.USE_LAST_EPOCH:
-                valid_loss = self.valid(data_loader)
+                valid_loss, valid_hr_loss, valid_spo2_loss = self.valid(data_loader)
                 print("Validation Loss: ", valid_loss)
                 self.valid_loss_history.append(valid_loss)
+                self.valid_hr_loss_history.append(valid_hr_loss)
+                self.valid_spo2_loss_history.append(valid_spo2_loss)
                 if self.min_valid_loss is None or valid_loss < self.min_valid_loss:
                     self.min_valid_loss = valid_loss
                     self.best_epoch = epoch
                     print("Update best model! Best epoch:", self.best_epoch)
 
-            # Call the plotting function if enabled in the configuration
+            # Call plotting functions if enabled in the configuration
             if self.config.TRAIN.PLOT_LOSSES_AND_LR:
+                # Plot overall losses and learning rate (via BaseTrainer's method)
                 self.plot_losses_and_lrs(
                     train_loss=self.train_loss_history,
                     valid_loss=self.valid_loss_history,
                     lrs=self.lr_history,
+                    config=self.config
+                )
+                # Plot task-specific HR and SpO2 losses with validation curves in yellow
+                self.plot_task_losses(
+                    hr_train=self.hr_loss_history,
+                    hr_valid=self.valid_hr_loss_history,
+                    spo2_train=self.spo2_loss_history,
+                    spo2_valid=self.valid_spo2_loss_history,
                     config=self.config
                 )
 
@@ -180,15 +245,17 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
         self.model.eval()
 
         total_losses = []
+        valid_hr_losses = []
+        valid_spo2_losses = []
+
         with torch.no_grad():
             vbar = tqdm(data_loader["valid"], ncols=80)
             for idx, batch in enumerate(vbar):
                 data = batch[0].float().to(self.device)
                 label = batch[1].float().to(self.device)  # [B, 2, T]
 
-                # HR label
+                # Extract HR signal and SpO2 label (average over T)
                 hr_label = label[:, 0, :]
-                # SpO2 label
                 spo2_label = label[:, 1, :].mean(dim=-1)
 
                 rppg_pred, spo2_pred = self.model(data)
@@ -200,9 +267,11 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
 
                 hr_loss = Neg_Pearson()(rppg_pred, hr_label)
                 spo2_loss = torch.sqrt(torch.mean((spo2_pred - spo2_label) ** 2))
-
                 total_loss = hr_loss + spo2_loss
+
                 total_losses.append(total_loss.item())
+                valid_hr_losses.append(hr_loss.item())
+                valid_spo2_losses.append(spo2_loss.item())
 
                 vbar.set_postfix(
                     total=total_loss.item(),
@@ -210,7 +279,10 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                     spo2=spo2_loss.item()
                 )
 
-        return float(np.mean(total_losses))
+        avg_total_loss = float(np.mean(total_losses))
+        avg_hr_loss = float(np.mean(valid_hr_losses))
+        avg_spo2_loss = float(np.mean(valid_spo2_losses))
+        return avg_total_loss, avg_hr_loss, avg_spo2_loss
 
     def test(self, data_loader):
         """Test routine for the multi-task model. Predicts HR waveform and SpO2."""
@@ -218,7 +290,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
             raise ValueError("No data for test.")
         print("\n===Testing===")
 
-        # Depending on your config, load the best epoch or last epoch
+        # Depending on your config, load best epoch or last epoch
         if self.config.TOOLBOX_MODE == "only_test":
             if not os.path.exists(self.config.INFERENCE.MODEL_PATH):
                 raise ValueError("Inference model path error! Check INFERENCE.MODEL_PATH.")
@@ -253,7 +325,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 data = test_batch[0].to(self.device)
                 label = test_batch[1].to(self.device)  # [B, 2, T]
 
-                # In your dataset, test_batch[2] might contain subject IDs, test_batch[3] might contain sort indices
+                # Assume test_batch[2] contains subject IDs and test_batch[3] contains sort indices
                 subject_ids = test_batch[2]
                 sort_indices = test_batch[3]
 
@@ -261,7 +333,6 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 rppg_pred, spo2_pred = self.model(data)
                 spo2_pred = spo2_pred.squeeze(-1)  # [B]
 
-                # Optionally, store them
                 for idx in range(data.shape[0]):
                     subj_id = subject_ids[idx]
                     sort_idx = int(sort_indices[idx])
@@ -272,22 +343,13 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                         spo2_predictions[subj_id] = {}
                         spo2_labels[subj_id] = {}
 
-                    # HR
                     hr_predictions[subj_id][sort_idx] = rppg_pred[idx].cpu()
                     hr_labels[subj_id][sort_idx] = label[idx, 0, :].cpu()
-
-                    # SpO2
                     spo2_predictions[subj_id][sort_idx] = spo2_pred[idx].cpu()
-                    # Typically the ground-truth SpO2 is label[:,1,:].mean(dim=-1)
                     gt_spo2 = label[idx, 1, :].mean().cpu()
                     spo2_labels[subj_id][sort_idx] = gt_spo2
 
-        # Now you can run your own custom metrics on hr_predictions/spo2_predictions vs. hr_labels/spo2_labels
-        # For example:
-        # calculate_metrics(hr_predictions, hr_labels, self.config)
-        # calculate_metrics(spo2_predictions, spo2_labels, self.config)
-
-        # Optionally save outputs
+        # Optionally save outputs or calculate metrics
         if self.config.TEST.OUTPUT_SAVE_DIR:
             self.save_test_outputs((hr_predictions, spo2_predictions),
                                    (hr_labels, spo2_labels),
@@ -305,7 +367,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
 
     def get_hr(self, y, sr=30, min=30, max=180):
         """
-        Compute HR from a waveform y via Welch's method. 
+        Compute HR from a waveform y via Welch's method.
         This function is taken from your original trainer for reference.
         """
         p, q = welch(y, sr, nfft=1e5/sr, nperseg=np.min((len(y)-1, 256)))
