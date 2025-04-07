@@ -374,7 +374,11 @@ class PhysMambaMultiTask(nn.Module):
 
         # Final FC: We map [B, frames] -> [B, 1], then scale.
         out_pre = self.fc_spo2(flat_spo2)          # [B, 1]
-        spo2_pred = 100.0 * torch.sigmoid(out_pre) # e.g. in [0, 100]
+        output_pre_round = 100.0 * torch.sigmoid(out_pre) # e.g. in [0, 100]
+
+        # Rounding approximation
+        spo2_pred = rounding_sigmoid_approximation(output_pre_round, k=10)
+        
         return spo2_pred
 
     def forward(self, x):
