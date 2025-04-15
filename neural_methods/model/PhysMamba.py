@@ -278,9 +278,22 @@ class PhysMambaMultiTask(nn.Module):
 
         self.MaxpoolSpa = nn.MaxPool3d((1, 2, 2), stride=(1, 2, 2))
 
+
+        # -------------------------
+        # Add a Shared MLP/FC Layer
+        # -------------------------
+        # Here, a 1x1 convolution is used as an MLP that processes the channel dimension.
+        self.shared_mlp = nn.Sequential(
+            nn.Conv3d(48, 48, kernel_size=1, bias=False),  # Acts like a fully connected layer on the channels.
+            nn.BatchNorm3d(48),
+            nn.ReLU(inplace=True)
+        )
         # -------------------------
         # 2) Task-Specific Heads
         # -------------------------
+        # Normalization layers at the start of each head
+        self.hr_head_norm = nn.BatchNorm3d(48)
+        self.spo2_head_norm = nn.BatchNorm3d(48)
 
         # --- (A) rPPG / HR Head ---
         self.ConvLast_hr = nn.Conv3d(48, 1, [1, 1, 1])
@@ -359,6 +372,10 @@ class PhysMambaMultiTask(nn.Module):
         Expects x of shape [B, 48, frames, 1, 1]. 
         Produces rPPG of shape [B, frames].
         """
+        # Normalize the input for the HR head
+        x = self.hr_head_norm(x)
+
+        
         x_hr = self.ConvLast_hr(x)        # [B, 1, frames, 1, 1]
         rPPG = x_hr.view(-1, self.frames) # [B, frames]
         return rPPG
@@ -369,6 +386,9 @@ class PhysMambaMultiTask(nn.Module):
         Expects x of shape [B, 48, frames, 1, 1].
         Produces an SpO2 scalar (or small vector) for each sample.
         """
+        # Normalize the input for the SpO2 head
+        x = self.spo2_head_norm(x)
+
         x_spo2 = self.ConvLast_spo2(x)           # [B, 1, frames, 1, 1]
         flat_spo2 = x_spo2.view(-1, self.frames) # [B, frames]
 
@@ -378,7 +398,7 @@ class PhysMambaMultiTask(nn.Module):
 
         # Rounding approximation
         spo2_pred = rounding_sigmoid_approximation(output_pre_round, k=10)
-        
+
         return spo2_pred
 
     def forward(self, x):
@@ -388,7 +408,10 @@ class PhysMambaMultiTask(nn.Module):
         # 1) Shared backbone
         features = self.forward_backbone(x)  # [B, 48, frames, 1, 1]
 
-        # 2) Task-specific heads
+        # 2) Apply the shared MLP/FC layer
+        features = self.shared_mlp(features)        # Process features further
+
+        # 3) Task-specific heads
         rppg = self.hr_head(features)      # [B, frames] 
         spo2 = self.spo2_head(features)    # [B, 1]
 
