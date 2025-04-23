@@ -109,16 +109,14 @@ class PhysMambaTrainer(BaseTrainer):
 
 
                 label = label.mean(dim=1, keepdim=True)
-                # print("-----------------averaged label shape:",label.shape)
-
-                label = label.squeeze()
+                label_class = self.convert_spo2_to_class(label.squeeze())
                 # print("-----------------averaged squeezed label shape:",label.shape)
 
 
                 self.optimizer.zero_grad()
 
                 # Forward pass
-                pred_spo2 = self.model(data)[0]
+                pred_spo2 = self.model(data)
 
                 # If your model outputs shape [N] or [N, 1], unify them:
                 if pred_spo2.shape[-1] == 1:
@@ -126,12 +124,14 @@ class PhysMambaTrainer(BaseTrainer):
                 # print("-----------------pred spo2 squeezed:",pred_spo2.shape)
 
 
-                # Calculate RMSE (you could do MSE; here, we demonstrate RMSE)
-                mse_loss = torch.mean((pred_spo2 - label) ** 2)
-                rmse_loss = torch.sqrt(mse_loss)
+                criterion = torch.nn.CrossEntropyLoss()
+                # model should output logits of shape [batch_size, 12]
+                pred_logits = self.model(data)
+                loss = criterion(pred_logits, label_class)
 
-                rmse_loss.backward()
-                running_loss += rmse_loss.item()
+
+                loss.backward()
+                running_loss += loss.item()
 
                 self.optimizer.step()
                 self.scheduler.step()
@@ -139,7 +139,7 @@ class PhysMambaTrainer(BaseTrainer):
                 # Keep track of LR (OneCycleLR changes it every iteration, but you can log it per epoch if you want)
                 current_lr = self.scheduler.get_last_lr()[0]
 
-                tbar.set_postfix(loss=rmse_loss.item())
+                tbar.set_postfix(loss=loss.item())
 
             #logging
             # Average loss for this epoch
@@ -196,33 +196,44 @@ class PhysMambaTrainer(BaseTrainer):
                 label = label.to(self.device)
 
                 label = label.mean(dim=1, keepdim=True)
-                label = label.squeeze()
+                label_class = self.convert_spo2_to_class(label.squeeze())
 
-                pred_spo2 = self.model(data)[0]
+
+                pred_spo2 = self.model(data)
                 if pred_spo2.shape[-1] == 1:
                     pred_spo2 = pred_spo2.squeeze(-1)
 
                 # RMSE
-                mse_loss = torch.mean((pred_spo2 - label) ** 2)
-                rmse_loss = torch.sqrt(mse_loss)
-                valid_loss.append(rmse_loss.item())
+                criterion = torch.nn.CrossEntropyLoss()
+                # model should output logits of shape [batch_size, 12]
+                pred_logits = self.model(data)
+                loss = criterion(pred_logits, label_class)
 
-                vbar.set_postfix(loss=rmse_loss.item())
+                valid_loss.append(loss.item())
+                # For accuracy (optional)
+                predicted_classes = torch.argmax(pred_logits, dim=1)
+                correct += (predicted_classes == label_class).sum().item()
+                total += label_class.size(0)
 
-        # Return average RMSE
+                vbar.set_postfix(loss=loss.item())
+                
+
+        accuracy = correct / total if total > 0 else 0
+        print(f'Validation Accuracy: {accuracy:.4f}')
+
         return float(np.mean(valid_loss))
 
     def test(self, data_loader):
-        """ Runs the model on test sets for SpO2. """
+        """Runs the model on test sets for SpO2 and computes RMSE, MAE, and accuracy."""
         if data_loader["test"] is None:
             raise ValueError("No data for test")
-        
+
         print('')
         print("===Testing===")
         predictions = dict()
         labels = dict()
 
-        # Load model if we're in test mode
+        # Load model
         if self.config.TOOLBOX_MODE == "only_test":
             if not os.path.exists(self.config.INFERENCE.MODEL_PATH):
                 raise ValueError("Inference model path error! Please check INFERENCE.MODEL_PATH in your yaml.")
@@ -256,20 +267,26 @@ class PhysMambaTrainer(BaseTrainer):
 
         all_preds = []
         all_labels = []
+        total = 0
+        correct = 0
 
         with torch.no_grad():
             for _, test_batch in enumerate(tqdm(data_loader["test"], ncols=80)):
                 batch_size = test_batch[0].shape[0]
-                data, label = test_batch[0].to(self.device), np.squeeze(test_batch[1][:,1:2,:], axis=1).float()
+                data = test_batch[0].to(self.device)
+                label = np.squeeze(test_batch[1][:,1:2,:], axis=1).float().to(self.device)
                 label = label.mean(dim=1, keepdim=True)
+                label_class = self.convert_spo2_to_class(label.squeeze())
 
-                pred_spo2_test = self.model(data)[0]
-                if pred_spo2_test.shape[-1] == 1:
-                    pred_spo2_test = pred_spo2_test.squeeze(-1)
+                pred_logits = self.model(data)
+                pred_classes = torch.argmax(pred_logits, dim=1)
+
+                if pred_logits.shape[-1] == 1:
+                    pred_logits = pred_logits.squeeze(-1)
 
                 if self.config.TEST.OUTPUT_SAVE_DIR:
                     label = label.cpu().squeeze()
-                    pred_spo2_test = pred_spo2_test.cpu()
+                    pred_logits = pred_logits.cpu()
 
                 for idx in range(batch_size):
                     subj_index = test_batch[2][idx]
@@ -278,27 +295,31 @@ class PhysMambaTrainer(BaseTrainer):
                         predictions[subj_index] = dict()
                         labels[subj_index] = dict()
 
-                    predictions[subj_index][sort_index] = pred_spo2_test[idx]
+                    predictions[subj_index][sort_index] = pred_logits[idx]
                     labels[subj_index][sort_index] = label[idx].squeeze()
 
                     # For metrics
-                    all_preds.append(pred_spo2_test[idx].item())
+                    all_preds.append(pred_logits[idx].item())
                     all_labels.append(label[idx].item())
+
+                    # Accuracy calculation
+                    correct += (pred_classes[idx] == label_class[idx]).item()
+                    total += 1
 
         print('')
 
         # === Calculate Metrics ===
         rmse = math.sqrt(mean_squared_error(all_labels, all_preds))
         mae = mean_absolute_error(all_labels, all_preds)
+        accuracy = correct / total if total > 0 else 0
+
         print(f"RMSE on test set: {rmse:.4f}")
         print(f"MAE on test set : {mae:.4f}")
+        print(f"Accuracy on test set: {accuracy:.4f}")
 
-        # If you have a custom SpO2-based metric, you could call it here
-        # calculate_metrics(predictions, labels, self.config)
-
-        if self.config.TEST.OUTPUT_SAVE_DIR:  # saving test outputs 
+        if self.config.TEST.OUTPUT_SAVE_DIR:
             self.save_test_outputs(predictions, labels, self.config)
-        
+
 
     def save_model(self, index):
         """Saves both model and optimizer state_dict if desired."""
@@ -322,3 +343,17 @@ class PhysMambaTrainer(BaseTrainer):
         return p[(p > min/60) & (p < max/60)][
             np.argmax(q[(p > min/60) & (p < max/60)])
         ] * 60
+    
+    def convert_spo2_to_class(self, spo2_values):
+        """
+        Converts continuous SpO2 values into class labels:
+        Class 0: <90
+        Class 1: 90
+        Class 2: 91
+        ...
+        Class 11: 100
+        """
+        spo2_classes = torch.clamp((spo2_values - 89), min=1, max=11).long()
+        spo2_classes[spo2_values < 90] = 0  # explicitly set <90 to class 0
+        return spo2_classes
+

@@ -219,7 +219,8 @@ class PhysMamba(nn.Module):
 
         self.poolspa = nn.AdaptiveAvgPool3d((frames, 1, 1))
 
-        self.fc = nn.Linear(frames, 1)
+        self.fc1 = nn.Linear(frames, 128)
+        self.fc2 = nn.Linear(128, 12)
 
     
 
@@ -265,7 +266,7 @@ class PhysMamba(nn.Module):
         f_x2 = self.MaxpoolSpa(f_x2)
         f_x2 = self.drop_4(f_x2)
 
-        s_x2 = self.fuse_2(s_x2,f_x2) # LateralConnection
+        s_x2 = self.fuse_2(s_x2,f_x2) 
         
         # Third blocks and upsampling
         s_x3 = self.Block3(s_x2) 
@@ -287,14 +288,6 @@ class PhysMamba(nn.Module):
 
         # print("-------------model before fc output shape: ",rPPG.shape)
 
-        output_pre = self.fc(rPPG)
-
-
-        # output=self.fc_layers(rPPG)
-
-        # print("-------------model output shape: ",output_pre.shape)
-        output_pre_round = 100 * torch.sigmoid(output_pre)
-
-        output = (output_pre_round, 10)
-
+        output_pre = self.fc1(rPPG)
+        output = self.fc2(output_pre)
         return output
