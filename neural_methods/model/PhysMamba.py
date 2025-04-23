@@ -20,11 +20,11 @@ def rounding_sigmoid_approximation(x: torch.Tensor, k: float, n_max: int = 100) 
     Returns the same shape as the input.
     """
     # Convert x to float64 for more stable summations
-    x = x.to(torch.float64)
+    x = x.to(torch.float32)
     
     # Create a tensor of all integer n values in the range [-n_max, ..., n_max]
     # shape: [2 * n_max + 1]
-    n_values = torch.arange(-n_max, n_max + 1, dtype=torch.float64, device=x.device)  
+    n_values = torch.arange(-n_max, n_max + 1, dtype=torch.float32, device=x.device)  
     
     # Expand x and n_values for broadcasting
     x_expanded = x.unsqueeze(-1)               # shape: [batch_size, 1, 1]
@@ -169,7 +169,7 @@ def conv_block(in_channels, out_channels, kernel_size, stride, padding, bn=True,
 
 
 class PhysMamba(nn.Module):
-    def __init__(self, theta=0.5, drop_rate1=0.25, drop_rate2=0.5, frames=128):
+    def __init__(self, theta=0.5, drop_rate1=0.4, drop_rate2=0.6, frames=60):
         super(PhysMamba, self).__init__()
 
         self.ConvBlock1 = conv_block(3, 16, [1, 5, 5], stride=1, padding=[0, 2, 2])  
@@ -221,30 +221,7 @@ class PhysMamba(nn.Module):
 
         self.fc = nn.Linear(frames, 1)
 
-    #     self.fc_layers = nn.Sequential(
-    #     nn.Linear(in_features=frames, out_features=64),
-    #     nn.BatchNorm1d(64),
-    #     nn.ReLU(),
-    #     nn.Linear(64, 32),
-    #     nn.BatchNorm1d(32),
-    #     nn.ReLU(),
-    #     nn.Linear(32, 1)
-    # )
-
-    #     self.fc_layers = nn.Sequential(
-    #     nn.Linear(in_features=frames, out_features=64),
-    #     nn.BatchNorm1d(64),
-    #     nn.LeakyReLU(negative_slope=0.01),  # LeakyReLU with a small negative slope
-    #     nn.Linear(64, 32),
-    #     nn.BatchNorm1d(32),
-    #     nn.LeakyReLU(negative_slope=0.01),  # LeakyReLU applied again
-    #     nn.Linear(32, 1)
-    # )
-
-
-
-
-
+    
 
     def _build_block(self, channels, theta):
         return nn.Sequential(

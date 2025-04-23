@@ -168,6 +168,8 @@ if __name__ == "__main__":
             train_loader = data_loader.BP4DPlusBigSmallLoader.BP4DPlusBigSmallLoader
         elif config.TRAIN.DATA.DATASET == "UBFC-PHYS":
             train_loader = data_loader.UBFCPHYSLoader.UBFCPHYSLoader
+        elif config.TRAIN.DATA.DATASET == "NBHR":
+            train_loader = data_loader.NBHRLoader.NBHRLoader
         elif config.TRAIN.DATA.DATASET == "iBVP":
             train_loader = data_loader.iBVPLoader.iBVPLoader
         else:
@@ -210,6 +212,8 @@ if __name__ == "__main__":
             valid_loader = data_loader.UBFCPHYSLoader.UBFCPHYSLoader
         elif config.VALID.DATA.DATASET == "iBVP":
             valid_loader = data_loader.iBVPLoader.iBVPLoader
+        elif config.VALID.DATA.DATASET == "NBHR":
+            valid_loader = data_loader.NBHRLoader.NBHRLoader
         elif config.VALID.DATA.DATASET is None and not config.TEST.USE_LAST_EPOCH:
             raise ValueError("Validation dataset not specified despite USE_LAST_EPOCH set to False!")
         else:
@@ -252,6 +256,8 @@ if __name__ == "__main__":
             test_loader = data_loader.UBFCPHYSLoader.UBFCPHYSLoader
         elif config.TEST.DATA.DATASET == "iBVP":
             test_loader = data_loader.iBVPLoader.iBVPLoader
+        elif config.TEST.DATA.DATASET == "NBHR":
+            test_loader = data_loader.NBHRLoader.NBHRLoader
         else:
             raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
                              SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP.")
