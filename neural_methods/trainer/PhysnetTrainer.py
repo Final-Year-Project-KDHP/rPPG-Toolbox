@@ -15,6 +15,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 
+
 class PhysnetTrainer(BaseTrainer):
 
     def __init__(self, config, data_loader):
@@ -74,20 +75,14 @@ class PhysnetTrainer(BaseTrainer):
               data, label, filename = batch[0].to(torch.float32).to(self.device), \
                                       batch[1].to(torch.float32).to(self.device), \
                                       batch[2]
-              label = np.squeeze(label[:, 1:2, :], axis=1)
+              label = batch[1][:, 1:2, :].squeeze(1).to(dtype=torch.float32, device=self.device)
+
+
 
               rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data)
-              #print("rspo2",rspo2)
-              # Check if rspo2 contains NaN values
-              # if torch.isnan(rspo2).any():
-              #     count += 1
-              #     print(f"NaN detected in rspo2 for batch {idx}. Skipping this batch.")
-              #     continue 
-
-              # Compute loss
-              rmse_loss = 0.0
+              rmse_loss = torch.tensor(0.0, dtype=torch.float32, device=self.device)
               for bb in range(data.shape[0]):
-                  rspo2_value = rspo2[bb] if isinstance(rspo2[bb], torch.Tensor) else torch.tensor(rspo2[bb].item(), device=label[bb].device)
+                  rspo2_value = rspo2[bb] if isinstance(rspo2[bb], torch.Tensor) else torch.tensor(rspo2[bb].item(), device=label[bb].device, dtype=torch.float32)
                   label_value = label[bb].mean().float()
                   # if torch.isnan(rspo2).any() or torch.isnan(label).any():
                   #     print(f"rspo2: {rspo2}, label: {label}")
@@ -95,21 +90,21 @@ class PhysnetTrainer(BaseTrainer):
               rmse_loss /= data.shape[0]
 
               # Check if loss is NaN
-              if torch.isnan(rmse_loss):
-                  count += 1
-                  print(f"NaN detected in loss for batch {idx}. Skipping backpropagation.", rspo2,label_value)
-                  continue  # Skip this batch
+            #   if torch.isnan(rmse_loss):
+            #       count += 1
+            #       print(f"NaN detected in loss for batch {idx}. Skipping backpropagation.", rspo2,label_value)
+            #       continue  # Skip this batch
 
               # Backward pass
               loss = rmse_loss
               loss.backward()
 
-              # Check for NaN gradients
-              for param in self.model.parameters():
-                  if torch.isnan(param.grad).any():
-                      print("NaN detected in gradients. Skipping optimizer step.")
-                      self.optimizer.zero_grad()  # Reset gradients
-                      continue
+            #   # Check for NaN gradients
+            #   for param in self.model.parameters():
+            #       if torch.isnan(param.grad).any():
+            #           print("NaN detected in gradients. Skipping optimizer step.")
+            #           self.optimizer.zero_grad()  # Reset gradients
+            #           continue
 
               running_loss += loss.item()
               train_loss.append(loss.item())
@@ -117,6 +112,7 @@ class PhysnetTrainer(BaseTrainer):
               # Optimizer step
               self.optimizer.step()
               self.scheduler.step()
+              lrs.append(self.scheduler.get_last_lr()[0]) 
               self.optimizer.zero_grad()  # Reset gradients
               tbar.set_postfix(loss=loss.item())
             print("count : ",count)
@@ -263,7 +259,7 @@ class PhysnetTrainer(BaseTrainer):
         spo2_errors_tensor = torch.stack(test_loss)  # Stack into a single tensor
         RMSE = torch.sqrt(spo2_errors_tensor.mean())
         print(rspo2_values)
-        print(label_values)
+        # print(label_values)
         print("RMSE:", RMSE.item(), "\nPredicted SpO2 value:", np.mean(rspo2_values), "\nGround Truth value:", np.mean(label_values))
         # calculate_metrics(predictions, labels, self.config)
         # if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs 
