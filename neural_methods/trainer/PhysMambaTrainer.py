@@ -151,17 +151,17 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
 
                 # Extract HR signal and SpO2 label (average over T)
                 hr_label = label[:, 0, :]  # shape [B, T]
-                spo2_label = label[:, 1, :].mean(dim=-1)  # shape [B]
+                spo2_label = label[:, 1, :]  # [B, T]
 
                 # Forward pass
-                rppg_pred, spo2_pred = self.model(data)   # rppg_pred: [B, T], spo2_pred: [B, 1]
+                rppg_pred, spo2_pred = self.model(data)   # rppg_pred: [B, T], spo2_pred: [B, T]
 
                 # Optional normalization for HR
                 rppg_pred = (rppg_pred - rppg_pred.mean(dim=-1, keepdim=True)) / (rppg_pred.std(dim=-1, keepdim=True) + 1e-6)
                 hr_label = (hr_label - hr_label.mean(dim=-1, keepdim=True)) / (hr_label.std(dim=-1, keepdim=True) + 1e-6)
 
                 # Squeeze SpO2 predictions if needed
-                spo2_pred = spo2_pred.squeeze(-1)
+                # spo2_pred = spo2_pred.squeeze(-1)
 
                 # Compute losses
                 hr_loss = self.criterion_hr(rppg_pred, hr_label)        # Negative Pearson for HR
@@ -256,10 +256,10 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
 
                 # Extract HR signal and SpO2 label (average over T)
                 hr_label = label[:, 0, :]
-                spo2_label = label[:, 1, :].mean(dim=-1)
+                spo2_label = label[:, 1, :]
 
                 rppg_pred, spo2_pred = self.model(data)
-                spo2_pred = spo2_pred.squeeze(-1)
+                # spo2_pred = spo2_pred.squeeze(-1)
 
                 # Optional normalization for HR
                 rppg_pred = (rppg_pred - rppg_pred.mean(dim=-1, keepdim=True)) / (rppg_pred.std(dim=-1, keepdim=True) + 1e-6)
@@ -331,7 +331,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
 
                 # Forward pass
                 rppg_pred, spo2_pred = self.model(data)
-                spo2_pred = spo2_pred.squeeze(-1)  # [B]
+                # spo2_pred = spo2_pred.squeeze(-1)  # [B]
 
                 for idx in range(data.shape[0]):
                     subj_id = subject_ids[idx]
@@ -346,8 +346,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                     hr_predictions[subj_id][sort_idx] = rppg_pred[idx].cpu()
                     hr_labels[subj_id][sort_idx] = label[idx, 0, :].cpu()
                     spo2_predictions[subj_id][sort_idx] = spo2_pred[idx].cpu()
-                    gt_spo2 = label[idx, 1, :].mean().cpu()
-                    spo2_labels[subj_id][sort_idx] = gt_spo2
+                    spo2_labels[subj_id][sort_idx]      = label[idx, 1, :].cpu() # [T]
 
         # Optionally save outputs or calculate metrics
         if self.config.TEST.OUTPUT_SAVE_DIR:

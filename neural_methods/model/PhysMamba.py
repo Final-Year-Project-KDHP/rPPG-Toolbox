@@ -300,7 +300,7 @@ class PhysMambaMultiTask(nn.Module):
 
         # --- (B) SpO2 Head ---
         self.ConvLast_spo2 = nn.Conv3d(48, 1, [1, 1, 1])
-        self.fc_spo2 = nn.Linear(frames, 1)  # final linear layer for SpO2
+        # self.fc_spo2 = nn.Linear(frames, 1)  # final linear layer for SpO2
 
     def _build_block(self, channels, theta):
         return nn.Sequential(
@@ -384,22 +384,25 @@ class PhysMambaMultiTask(nn.Module):
         """
         SpO2 head.
         Expects x of shape [B, 48, frames, 1, 1].
-        Produces an SpO2 scalar (or small vector) for each sample.
+        Produces a per-frame SpO2 prediction of shape [B, frames].
         """
-        # Normalize the input for the SpO2 head
+        # 1) Normalize
         x = self.spo2_head_norm(x)
 
-        x_spo2 = self.ConvLast_spo2(x)           # [B, 1, frames, 1, 1]
-        flat_spo2 = x_spo2.view(-1, self.frames) # [B, frames]
+        # 2) 1×1×1 conv → [B, 1, frames, 1, 1]
+        x_spo2 = self.ConvLast_spo2(x)
 
-        # Final FC: We map [B, frames] -> [B, 1], then scale.
-        out_pre = self.fc_spo2(flat_spo2)          # [B, 1]
-        output_pre_round = 100.0 * torch.sigmoid(out_pre) # e.g. in [0, 100]
+        # 3) Flatten to [B, frames]
+        spo2_vec = x_spo2.view(x_spo2.size(0), self.frames)
 
-        # Rounding approximation
-        spo2_pred = rounding_sigmoid_approximation(output_pre_round, k=10)
+        # 4) Scale to [0,100]
+        spo2_scaled = 100.0 * torch.sigmoid(spo2_vec)
+
+        # 5) (Optional) differentiable rounding per frame
+        spo2_pred = rounding_sigmoid_approximation(spo2_scaled, k=10)
 
         return spo2_pred
+
 
     def forward(self, x):
         """
