@@ -316,6 +316,8 @@ class PhysMambaMultiTask(nn.Module):
         Shared feature extractor that processes input [B,3,T,H,W]
         and returns a feature map [B,48,frames,1,1].
         """
+        print(f"[backbone] input x: {tuple(x.shape)}")    # B,3,T,H,W
+
         # Initial conv blocks
         x = self.ConvBlock1(x)
         x = self.MaxpoolSpa(x)
@@ -338,6 +340,8 @@ class PhysMambaMultiTask(nn.Module):
 
         s_x1 = self.fuse_1(s_x1, f_x1)  # lateral fusion
 
+        print(f"[scale 1] after fuse_1      {tuple(s_x1.shape)}")
+
         # 2nd set of blocks
         s_x2 = self.Block2_slow(s_x1)
         s_x2 = self.MaxpoolSpa(s_x2)
@@ -348,6 +352,8 @@ class PhysMambaMultiTask(nn.Module):
         f_x2 = self.drop_4(f_x2)
 
         s_x2 = self.fuse_2(s_x2, f_x2)
+
+        print(f"[scale 2] after fuse_2      {tuple(s_x2.shape)}")
 
         # 3rd block & upsampling
         s_x3 = self.Block3_slow(s_x2)
@@ -362,8 +368,13 @@ class PhysMambaMultiTask(nn.Module):
         x_fusion = torch.cat((f_x3, s_x3), dim=1)  # [B, 32+64=96, T', 1, 1]
         x_final = self.upsample2(x_fusion)         # [B, 48, T'', 1, 1]
 
+        print(f"[backbone] before poolspa x_final AKA [scale 3] before poolspa: {tuple(x_final.shape)}")
+
         # Pool over spatial dims -> [B, 48, frames, 1, 1]
         x_final = self.poolspa(x_final)
+
+        print(f"[backbone] output x_final: {tuple(x_final.shape)}")
+
         return x_final
 
     def hr_head(self, x):
@@ -372,12 +383,18 @@ class PhysMambaMultiTask(nn.Module):
         Expects x of shape [B, 48, frames, 1, 1]. 
         Produces rPPG of shape [B, frames].
         """
+
+        print(f"[hr_head] input x: {tuple(x.shape)}")
+
         # Normalize the input for the HR head
         x = self.hr_head_norm(x)
 
         
         x_hr = self.ConvLast_hr(x)        # [B, 1, frames, 1, 1]
         rPPG = x_hr.view(-1, self.frames) # [B, frames]
+
+        print(f"[hr_head] output rPPG: {tuple(rPPG.shape)}")
+
         return rPPG
 
     def spo2_head(self, x):
@@ -386,6 +403,9 @@ class PhysMambaMultiTask(nn.Module):
         Expects x of shape [B, 48, frames, 1, 1].
         Produces a per-frame SpO2 prediction of shape [B, frames].
         """
+
+        print(f"[spo2_head] input x: {tuple(x.shape)}")
+
         # 1) Normalize
         x = self.spo2_head_norm(x)
 
@@ -401,6 +421,8 @@ class PhysMambaMultiTask(nn.Module):
         # 5) (Optional) differentiable rounding per frame
         spo2_pred = rounding_sigmoid_approximation(spo2_scaled, k=10)
 
+        print(f"[spo2_head] output spo2_pred: {tuple(spo2_pred.shape)}")
+
         return spo2_pred
 
 
@@ -408,14 +430,22 @@ class PhysMambaMultiTask(nn.Module):
         """
         Forward pass returning both rPPG (HR) and SpO2 predictions.
         """
+        print(f"[forward] raw input x: {tuple(x.shape)}")
+
         # 1) Shared backbone
         features = self.forward_backbone(x)  # [B, 48, frames, 1, 1]
+
+        print(f"[forward] backbone features: {tuple(features.shape)}")
 
         # 2) Apply the shared MLP/FC layer
         features = self.shared_mlp(features)        # Process features further
 
+        print(f"[forward] after shared_mlp: {tuple(features.shape)}")
+
         # 3) Task-specific heads
         rppg = self.hr_head(features)      # [B, frames] 
         spo2 = self.spo2_head(features)    # [B, 1]
+
+        print(f"[forward] final outputs  rppg={tuple(rppg.shape)}, spo2={tuple(spo2.shape)}")
 
         return rppg, spo2
