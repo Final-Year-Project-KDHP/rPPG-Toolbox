@@ -223,8 +223,9 @@ class PhysMambaMultiTask(nn.Module):
     """
     def __init__(self, theta=0.5, drop_rate1=0.25, drop_rate2=0.5, frames=128):
         super(PhysMambaMultiTask, self).__init__()
+        # frames=60
         self.frames = frames  # number of frames
-
+        # print(f"Frames: {self.frames}")
         # -------------------------
         # 1) Shared Backbone
         # -------------------------
@@ -364,6 +365,8 @@ class PhysMambaMultiTask(nn.Module):
 
         # Pool over spatial dims -> [B, 48, frames, 1, 1]
         x_final = self.poolspa(x_final)
+        # print("x_final shape before poolspa:", x_final.shape)
+
         return x_final
 
     def hr_head(self, x):
@@ -377,6 +380,8 @@ class PhysMambaMultiTask(nn.Module):
 
         
         x_hr = self.ConvLast_hr(x)        # [B, 1, frames, 1, 1]
+        # print("x_hr shape before view:", x_hr.shape)
+
         rPPG = x_hr.view(-1, self.frames) # [B, frames]
         return rPPG
 
@@ -410,6 +415,8 @@ class PhysMambaMultiTask(nn.Module):
 
         # 2) Apply the shared MLP/FC layer
         features = self.shared_mlp(features)        # Process features further
+        # print("features shape before hr_head:", features.shape)
+
 
         # 3) Task-specific heads
         rppg = self.hr_head(features)      # [B, frames] 

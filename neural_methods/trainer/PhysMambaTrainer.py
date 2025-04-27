@@ -10,6 +10,7 @@ from scipy.signal import welch
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter, MaxNLocator
 
+
 # from neural_methods.model.PhysMambaMultiTask import PhysMambaMultiTask  # <-- import your multi-task model
 from neural_methods.model.PhysMamba import PhysMambaMultiTask  # <-- import your multi-task model
 from neural_methods.trainer.BaseTrainer import BaseTrainer
@@ -267,7 +268,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
 
                 hr_loss = Neg_Pearson()(rppg_pred, hr_label)
                 spo2_loss = torch.sqrt(torch.mean((spo2_pred - spo2_label) ** 2))
-                total_loss = hr_loss + spo2_loss
+                total_loss = 0.4* hr_loss + 0.6* spo2_loss
 
                 total_losses.append(total_loss.item())
                 valid_hr_losses.append(hr_loss.item())
@@ -349,11 +350,43 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                     gt_spo2 = label[idx, 1, :].mean().cpu()
                     spo2_labels[subj_id][sort_idx] = gt_spo2
 
+        # Convert predictions and labels to numpy arrays for metric calculations
+        all_hr_preds = []
+        all_hr_labels = []
+        all_spo2_preds = []
+        all_spo2_labels = []
+
+        for subj_id in hr_predictions:
+            sort_indices = sorted(hr_predictions[subj_id].keys())
+            for idx in sort_indices:
+                pred_hr = hr_predictions[subj_id][idx].numpy()
+                label_hr = hr_labels[subj_id][idx].numpy()
+                pred_spo2 = spo2_predictions[subj_id][idx].item()
+                label_spo2 = spo2_labels[subj_id][idx].item()
+
+                # For HR, take mean over waveform if needed
+                all_hr_preds.append(np.mean(pred_hr))
+                all_hr_labels.append(np.mean(label_hr))
+
+                # SpO2 is already a scalar
+                all_spo2_preds.append(pred_spo2)
+                all_spo2_labels.append(label_spo2)
+
+        # Compute RMSE manually
+        hr_rmse = np.sqrt(np.mean((np.array(all_hr_labels) - np.array(all_hr_preds)) ** 2))
+        spo2_rmse = np.sqrt(np.mean((np.array(all_spo2_labels) - np.array(all_spo2_preds)) ** 2))
+
+        print("\n=== Test RMSE Results ===")
+        print(f"HR RMSE   : {hr_rmse:.4f}")
+        print(f"SpO2 RMSE : {spo2_rmse:.4f}")
+                        
+
         # Optionally save outputs or calculate metrics
         if self.config.TEST.OUTPUT_SAVE_DIR:
             self.save_test_outputs((hr_predictions, spo2_predictions),
                                    (hr_labels, spo2_labels),
                                    self.config)
+        calculate_metrics(hr_predictions, hr_labels, self.config)
 
     def save_model(self, epoch):
         """Save the model (and possibly optimizer state) to disk."""
