@@ -107,6 +107,8 @@ def test(config, data_loader_dict):
         model_trainer = trainer.FactorizePhysTrainer.FactorizePhysTrainer(config, data_loader_dict)
     elif config.MODEL.NAME == 'PhysMamba':
         model_trainer = trainer.PhysMambaTrainer.PhysMambaTrainer(config, data_loader_dict)
+    elif config.MODEL.NAME == 'PhysnetNBHR':
+        model_trainer = trainer.PhysnetTrainerNBHR.PhysnetTrainerNBHR(config, data_loader_dict)
     else:
         raise ValueError('Your Model is Not Supported  Yet!')
     model_trainer.test(data_loader_dict)

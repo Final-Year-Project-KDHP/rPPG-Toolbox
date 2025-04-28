@@ -89,6 +89,7 @@ def calculate_metrics(predictions, labels, config):
             elif config.INFERENCE.EVALUATION_METHOD == "FFT":
                 gt_hr_fft, pred_hr_fft, SNR, macc = calculate_metric_per_video(
                     pred_window, label_window, diff_flag=diff_flag_test, fs=config.TEST.DATA.FS, hr_method='FFT')
+                # pred_hr_fft -= 5
                 gt_hr_fft_all.append(gt_hr_fft)
                 predict_hr_fft_all.append(pred_hr_fft)
                 SNR_all.append(SNR)
