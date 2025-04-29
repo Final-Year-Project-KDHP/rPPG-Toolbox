@@ -156,9 +156,9 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 # Forward pass
                 rppg_pred, spo2_pred = self.model(data)   # rppg_pred: [B, T], spo2_pred: [B, T]
 
-                # Optional normalization for HR
-                rppg_pred = (rppg_pred - rppg_pred.mean(dim=-1, keepdim=True)) / (rppg_pred.std(dim=-1, keepdim=True) + 1e-6)
-                hr_label = (hr_label - hr_label.mean(dim=-1, keepdim=True)) / (hr_label.std(dim=-1, keepdim=True) + 1e-6)
+                # # Optional normalization for HR
+                # rppg_pred = (rppg_pred - rppg_pred.mean(dim=-1, keepdim=True)) / (rppg_pred.std(dim=-1, keepdim=True) + 1e-6)
+                # hr_label = (hr_label - hr_label.mean(dim=-1, keepdim=True)) / (hr_label.std(dim=-1, keepdim=True) + 1e-6)
 
                 # Squeeze SpO2 predictions if needed
                 # spo2_pred = spo2_pred.squeeze(-1)
@@ -261,9 +261,9 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 rppg_pred, spo2_pred = self.model(data)
                 # spo2_pred = spo2_pred.squeeze(-1)
 
-                # Optional normalization for HR
-                rppg_pred = (rppg_pred - rppg_pred.mean(dim=-1, keepdim=True)) / (rppg_pred.std(dim=-1, keepdim=True) + 1e-6)
-                hr_label = (hr_label - hr_label.mean(dim=-1, keepdim=True)) / (hr_label.std(dim=-1, keepdim=True) + 1e-6)
+                # # Optional normalization for HR
+                # rppg_pred = (rppg_pred - rppg_pred.mean(dim=-1, keepdim=True)) / (rppg_pred.std(dim=-1, keepdim=True) + 1e-6)
+                # hr_label = (hr_label - hr_label.mean(dim=-1, keepdim=True)) / (hr_label.std(dim=-1, keepdim=True) + 1e-6)
 
                 hr_loss = Neg_Pearson()(rppg_pred, hr_label)
                 spo2_loss = torch.sqrt(torch.mean((spo2_pred - spo2_label) ** 2))
@@ -353,6 +353,37 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
             self.save_test_outputs((hr_predictions, spo2_predictions),
                                    (hr_labels, spo2_labels),
                                    self.config)
+        
+        # Calculate metrics
+        all_hr_preds = []
+        all_hr_labels = []
+        all_spo2_preds = []
+        all_spo2_labels = []
+
+        for subj_id in hr_predictions:
+            sort_indices = sorted(hr_predictions[subj_id].keys())
+            for idx in sort_indices:
+                pred_hr = hr_predictions[subj_id][idx].numpy()
+                label_hr = hr_labels[subj_id][idx].numpy()
+                pred_spo2_seq = spo2_predictions[subj_id][idx].numpy()  # [T]
+                label_spo2_seq = spo2_labels[subj_id][idx].numpy()      # [T]
+
+                all_hr_preds.append(np.mean(pred_hr))     # mean HR per sequence
+                all_hr_labels.append(np.mean(label_hr))
+
+                all_spo2_preds.extend(pred_spo2_seq.tolist())  # **append all frames**
+                all_spo2_labels.extend(label_spo2_seq.tolist())
+
+
+        # Compute RMSE manually
+        hr_rmse = np.sqrt(np.mean((np.array(all_hr_labels) - np.array(all_hr_preds)) ** 2))
+        spo2_rmse = np.sqrt(np.mean((np.array(all_spo2_labels) - np.array(all_spo2_preds)) ** 2))
+
+
+        print("\n=== Test RMSE Results ===")
+        print(f"HR RMSE   : {hr_rmse:.4f}")
+        print(f"SpO2 RMSE : {spo2_rmse:.4f}")
+        calculate_metrics(hr_predictions, hr_labels, self.config)
 
     def save_model(self, epoch):
         """Save the model (and possibly optimizer state) to disk."""
