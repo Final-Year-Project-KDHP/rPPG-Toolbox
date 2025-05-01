@@ -47,13 +47,17 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
         self.spo2_loss_history = []
         self.valid_hr_loss_history = []
         self.valid_spo2_loss_history = []
+        # track lambda if desired
+        self.lambda_history = []
 
         # Model
         self.model = PhysMambaMultiTask(
             theta=0.5,
             drop_rate1=0.25,
             drop_rate2=0.5,
-            frames=128  # or set from config if needed
+            frames=128, # or set from config if needed
+            learnable_balance  = False,#getattr(config.TRAIN, "LEARNABLE_BALANCE", True),
+            init_lambda        = 0.1,#getattr(config.TRAIN, "INIT_LAMBDA", 0.5)
         ).to(self.device)
 
         if self.num_of_gpu > 1:
@@ -154,7 +158,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 spo2_label = label[:, 1, :]  # [B, T]
 
                 # Forward pass
-                rppg_pred, spo2_pred = self.model(data)   # rppg_pred: [B, T], spo2_pred: [B, T]
+                rppg_pred, spo2_pred, λ = self.model(data)   # rppg_pred: [B, T], spo2_pred: [B, T]
 
                 # Optional normalization for HR
                 rppg_pred = (rppg_pred - rppg_pred.mean(dim=-1, keepdim=True)) / (rppg_pred.std(dim=-1, keepdim=True) + 1e-6)
@@ -166,7 +170,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 # Compute losses
                 hr_loss = self.criterion_hr(rppg_pred, hr_label)        # Negative Pearson for HR
                 spo2_loss = self.criterion_spo2(spo2_pred, spo2_label)    # RMSE for SpO2
-                total_loss = hr_loss + spo2_loss  # Weighted sum if needed
+                total_loss = λ * hr_loss + (1.0 - λ) * spo2_loss
 
                 # Backpropagation
                 self.optimizer.zero_grad()
@@ -181,7 +185,8 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 tbar.set_postfix(
                     total=total_loss.item(),
                     hr=hr_loss.item(),
-                    spo2=spo2_loss.item()
+                    spo2=spo2_loss.item(),
+                    λ     = λ.item()
                 )
 
             avg_loss = running_loss / len(data_loader["train"])
@@ -258,7 +263,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 hr_label = label[:, 0, :]
                 spo2_label = label[:, 1, :]
 
-                rppg_pred, spo2_pred = self.model(data)
+                rppg_pred, spo2_pred,λ = self.model(data)
                 # spo2_pred = spo2_pred.squeeze(-1)
 
                 # Optional normalization for HR
@@ -267,7 +272,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
 
                 hr_loss = Neg_Pearson()(rppg_pred, hr_label)
                 spo2_loss = torch.sqrt(torch.mean((spo2_pred - spo2_label) ** 2))
-                total_loss = hr_loss + spo2_loss
+                total_loss = λ * hr_loss + (1.0 - λ) * spo2_loss
 
                 total_losses.append(total_loss.item())
                 valid_hr_losses.append(hr_loss.item())
@@ -276,7 +281,8 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 vbar.set_postfix(
                     total=total_loss.item(),
                     hr=hr_loss.item(),
-                    spo2=spo2_loss.item()
+                    spo2=spo2_loss.item(), 
+                    λ=λ.item()
                 )
 
         avg_total_loss = float(np.mean(total_losses))
@@ -330,7 +336,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 sort_indices = test_batch[3]
 
                 # Forward pass
-                rppg_pred, spo2_pred = self.model(data)
+                rppg_pred, spo2_pred,_ = self.model(data)
                 # spo2_pred = spo2_pred.squeeze(-1)  # [B]
 
                 for idx in range(data.shape[0]):
