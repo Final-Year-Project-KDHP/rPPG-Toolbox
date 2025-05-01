@@ -111,19 +111,17 @@ class MambaLayer(nn.Module):
 ################################################################################
 
 class Router(nn.Module):
-    """Generates 2‑way gate logits from a feature cube."""
-
+    """Outputs 2 logits – task vs shared – for its caller."""
     def __init__(self, in_channels):
         super().__init__()
-        self.conv = nn.Sequential(
-            nn.AdaptiveAvgPool3d(1),           # B,C,1,1,1
-            nn.Conv3d(in_channels, in_channels // 4, 1),
+        self.net = nn.Sequential(
+            nn.AdaptiveAvgPool3d(1),
+            nn.Conv3d(in_channels, max(8, in_channels // 4), 1),  # mid-dim guard
             nn.ReLU(),
-            nn.Conv3d(in_channels // 4, 2, 1),  # 2 experts
+            nn.Conv3d(max(8, in_channels // 4), 2, 1)
         )
-
-    def forward(self, x):
-        return self.conv(x)  # (B,2,1,1,1)
+    def forward(self, x):          # → (B,2,1,1,1)
+        return self.net(x)
 
 ################################################################################
 # Small helper to build standard conv blocks
@@ -195,13 +193,15 @@ class PhysMambaMultiTask(nn.Module):
 
         # =====================  MoE additions  ===================== #
         # Scale‑2 routers & experts (64‑ch)
-        self.router2 = Router(64)
+        self.router2_rppg = Router(64)     # ⬅ rPPG-specific gate
+        self.router2_spo2 = Router(64)     # ⬅ SpO₂-specific gate
         self.expert2_rppg = nn.Conv3d(64, 48, 1)
         self.expert2_spo2 = nn.Conv3d(64, 48, 1)
         self.expert2_shared = nn.Conv3d(64, 48, 1)
 
         # Pooled routers & experts (48‑ch)
-        self.routerP = Router(48)
+        self.routerP_rppg = Router(48)
+        self.routerP_spo2 = Router(48)
         self.expertP_rppg = nn.Conv3d(48, 48, 1)
         self.expertP_spo2 = nn.Conv3d(48, 48, 1)
         self.expertP_shared = nn.Conv3d(48, 48, 1)
@@ -251,9 +251,10 @@ class PhysMambaMultiTask(nn.Module):
         s_x2 = self.fuse_2(s_x2, f_x2)         # (B,64,32,8,8)
 
         # -----------------  MoE injection @ Scale‑2 ----------------- #
-        logits2 = self.router2(s_x2)  # B,2,1,1,1
-        fused2_r = fuse_moe(s_x2, logits2, self.expert2_rppg, self.expert2_shared)
-        fused2_s = fuse_moe(s_x2, logits2, self.expert2_spo2, self.expert2_shared)
+        log2_r = self.router2_rppg(s_x2)            # B,2,1,1,1
+        log2_s = self.router2_spo2(s_x2)            # B,2,1,1,1
+        fused2_r = fuse_moe(s_x2, log2_r, self.expert2_rppg, self.expert2_shared)
+        fused2_s = fuse_moe(s_x2, log2_s, self.expert2_spo2, self.expert2_shared)
         # Upsample temporal+spatial → (B,64,128,1,1)
         fused2_r = F.interpolate(fused2_r, size=(self.frames, 1, 1), mode='trilinear', align_corners=False)
         fused2_s = F.interpolate(fused2_s, size=(self.frames, 1, 1), mode='trilinear', align_corners=False)
@@ -266,17 +267,18 @@ class PhysMambaMultiTask(nn.Module):
         x_final = self.poolspa(x_final)              # (B,48,128,1,1)
 
         # -----------------  MoE injection @ Pooled ----------------- #
-        logitsP = self.routerP(x_final)  # B,2,1,1,1
-        fusedP_r = fuse_moe(x_final, logitsP, self.expertP_rppg, self.expertP_shared)
-        fusedP_s = fuse_moe(x_final, logitsP, self.expertP_spo2, self.expertP_shared)
+        logP_r = self.routerP_rppg(x_final)
+        logP_s = self.routerP_spo2(x_final)
+        fusedP_r = fuse_moe(x_final, logP_r, self.expertP_rppg, self.expertP_shared)
+        fusedP_s = fuse_moe(x_final, logP_s, self.expertP_spo2, self.expertP_shared)
 
         # Merge scales (sum)
         feat_r = fused2_r + fusedP_r      # (B,48,128,1,1) after channel align
         feat_s = fused2_s + fusedP_s
 
         # Shared channel mix
-        feat_r = self.shared_mlp(feat_r)
-        feat_s = self.shared_mlp(feat_s)
+        feat_r = self.shared_mlp(fused2_r + fusedP_r)
+        feat_s = self.shared_mlp(fused2_s + fusedP_s)
 
         # ------------- heads ------------- #
         rppg = self.ConvLast_hr(self.hr_head_norm(feat_r)).view(b, self.frames)
