@@ -1,8 +1,5 @@
-# neural_methods/model/PhysMamba.py
 # -------------------------------------------------------------------------
 # PhysMamba – multi‑task rPPG + SpO₂ with three MoE injections
-# Compatible with Python 3.7 – 3.9 (no PEP‑604 “|” unions)
-# -------------------------------------------------------------------------
 import math
 from typing import Optional, List, Tuple
 
@@ -145,22 +142,37 @@ class MambaLayer(nn.Module):
 # -------------------------------------------------------------------------
 class CrossScaleFuse(nn.Module):
     """
-    Learned per‑location weighting across three resolution taps.
-
-    Inputs `f1`, `f2`, `f3` must share shape (B,C,T,H,W).
+    *Learned* or *fixed* per‑location fusion of three resolution taps.
+    If `learnable=False`, `manual_coeffs=[w2,w3]` must be given; w1 is
+    inferred s.t. w1+w2+w3 = 1.
     """
 
-    def __init__(self, channels: int):
+    def __init__(
+        self,
+        channels: int,
+        learnable: bool = True,
+        manual_coeffs: Optional[List[float]] = None,
+    ):
         super().__init__()
-        self.weight_gen = nn.Conv3d(channels * 3, 3, kernel_size=1, bias=True)
+        self.learnable = learnable
+        if learnable:
+            self.weight_gen = nn.Conv3d(channels * 3, 3, 1, bias=True)
+        else:
+            if manual_coeffs is None or len(manual_coeffs) != 2:
+                raise ValueError("manual_coeffs must be [w2,w3] when learnable=False")
+            w2, w3 = manual_coeffs
+            w1 = 1.0 - (w2 + w3)
+            coeff = torch.tensor([w1, w2, w3], dtype=torch.float32)
+            # register so it moves with .to(device) but is NOT trainable
+            self.register_buffer("coeff", coeff.view(1, 3, 1, 1, 1))
 
-    def forward(
-        self, f1: torch.Tensor, f2: torch.Tensor, f3: torch.Tensor
-    ) -> torch.Tensor:
-        cat = torch.cat([f1, f2, f3], dim=1)      # (B,3C,T,H,W)
-        logits = self.weight_gen(cat)             # (B,3,T,H,W)
-        weights = torch.softmax(logits, dim=1)
-        w1, w2, w3 = weights[:, 0:1], weights[:, 1:2], weights[:, 2:3]
+    def forward(self, f1: torch.Tensor, f2: torch.Tensor, f3: torch.Tensor) -> torch.Tensor:
+        if self.learnable:
+            cat = torch.cat([f1, f2, f3], dim=1)
+            logits = self.weight_gen(cat)
+            w1, w2, w3 = torch.softmax(logits, dim=1).chunk(3, dim=1)
+        else:  # broadcast stored weights
+            w1, w2, w3 = self.coeff.split(1, dim=1)
         return w1 * f1 + w2 * f2 + w3 * f3
 
 
@@ -234,8 +246,29 @@ class PhysMambaMultiTask(nn.Module):
         frames: int = 128,
         learnable_balance: bool = False,
         init_lambda: float = 0.5,
+        cross_fuse_cfg=None,                # expect a dict‑like node
+        k_round: float = 10.0
     ):
         super().__init__()
+
+        if cross_fuse_cfg is None:    # minimal safety‑check
+            raise ValueError("cross_fuse_cfg must be passed from the YAML!")
+
+        # keep for later use in forward()
+        self.k_round = k_round
+
+        # create fusers
+        self.cross_fuse_rppg = CrossScaleFuse(
+            48,
+            learnable=cross_fuse_cfg.ENABLED,
+            manual_coeffs=cross_fuse_cfg.MANUAL_COEFFS,
+        )
+        self.cross_fuse_spo2 = CrossScaleFuse(
+            48,
+            learnable=cross_fuse_cfg.ENABLED,
+            manual_coeffs=cross_fuse_cfg.MANUAL_COEFFS,
+        )
+
         self.frames = frames
 
         # ─── Stem ──────────────────────────────────────────────────────
@@ -360,6 +393,8 @@ class PhysMambaMultiTask(nn.Module):
         spo2 : (B,T)     predicted SpO₂ (rounded 0‑100 %)
         λ    : ()        learnable task balance scalar
         """
+        print("k round:",self.k_round)
+
         b = x.size(0)
 
         # === Stem ===
@@ -444,6 +479,7 @@ class PhysMambaMultiTask(nn.Module):
 
         rppg = self.ConvLast_hr(self.hr_head_norm(feat_r)).view(b, self.frames)
         spo2 = self.ConvLast_spo2(self.spo2_head_norm(feat_s)).view(b, self.frames)
-        spo2 = rounding_sigmoid_approximation(100.0 * torch.sigmoid(spo2), k=10.0)
+        # spo2 = rounding_sigmoid_approximation(100.0 * torch.sigmoid(spo2), k=10.0)
+        spo2 = rounding_sigmoid_approximation(100.0 * torch.sigmoid(spo2), k=self.k_round)
 
         return rppg, spo2, self.lambda_task

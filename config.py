@@ -336,6 +336,15 @@ _C.MODEL.PHYSFORMER.NUM_HEADS = 4
 _C.MODEL.PHYSFORMER.NUM_LAYERS = 12
 _C.MODEL.PHYSFORMER.THETA = 0.7
 
+# after _C.MODEL section
+_C.MODEL.CROSS_FUSE = CN()
+_C.MODEL.CROSS_FUSE.ENABLED = True
+_C.MODEL.CROSS_FUSE.MANUAL_COEFFS = [0.33, 0.33]   # w2, w3  (w1 auto‑filled)
+
+_C.MODEL.ROUNDING_SIGMOID = CN()
+_C.MODEL.ROUNDING_SIGMOID.K = 10.0
+
+
 # -----------------------------------------------------------------------------
 # Inference settings
 # -----------------------------------------------------------------------------
