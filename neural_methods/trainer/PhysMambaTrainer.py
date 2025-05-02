@@ -56,8 +56,8 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
             drop_rate1=0.25,
             drop_rate2=0.5,
             frames=128, # or set from config if needed
-            learnable_balance  = False,#getattr(config.TRAIN, "LEARNABLE_BALANCE", True),
-            init_lambda        = 0.1,#getattr(config.TRAIN, "INIT_LAMBDA", 0.5)
+            learnable_balance  = getattr(config.TRAIN, "LEARNABLE_BALANCE", False),
+            init_lambda        = getattr(config.TRAIN, "INIT_LAMBDA", 0.5)
         ).to(self.device)
 
         if self.num_of_gpu > 1:

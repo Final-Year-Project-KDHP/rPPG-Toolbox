@@ -58,6 +58,18 @@ def add_args(parser):
       PURE_UNSUPERVISED.yaml
       UBFC-rPPG_UNSUPERVISED.yaml
     '''
+    parser.add_argument(
+        '--learnable_balance',
+        type=lambda x: (str(x).lower() == "true"),
+        default=None,
+        help="Override YAML: make λ learnable? (True/False)"
+    )
+    parser.add_argument(
+        '--init_lambda',
+        type=float,
+        default=None,
+        help="Override YAML: initial λ value in (0,1)."
+    )
     return parser
 
 
@@ -147,12 +159,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser = add_args(parser)
     parser = trainer.BaseTrainer.BaseTrainer.add_trainer_args(parser)
+    # make sure BaseTrainer still adds its own flags
     parser = data_loader.BaseLoader.BaseLoader.add_data_loader_args(parser)
     args = parser.parse_args()
 
     # configurations.
     config = get_config(args)
     print('Configuration:')
+
+    # override YAML if CLI flags were passed
+    if args.learnable_balance is not None:
+        config.TRAIN.LEARNABLE_BALANCE = args.learnable_balance
+    if args.init_lambda is not None:
+        config.TRAIN.INIT_LAMBDA = args.init_lambda
+
     print(config, end='\n\n')
 
     data_loader_dict = dict() # dictionary of data loaders 

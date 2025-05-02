@@ -31,6 +31,10 @@ _C.TRAIN.OPTIMIZER.BETAS = (0.9, 0.999)
 _C.TRAIN.OPTIMIZER.MOMENTUM = 0.9
 _C.TRAIN.MODEL_FILE_NAME = ''
 _C.TRAIN.PLOT_LOSSES_AND_LR = True
+# ——— task-balance λ settings ———
+_C.TRAIN.LEARNABLE_BALANCE = True    # whether λ is learnable (default True)
+_C.TRAIN.INIT_LAMBDA       = 0.5     # initial λ value ∈ (0,1)
+
 # Train.Data settings
 _C.TRAIN.DATA = CN()
 _C.TRAIN.DATA.INFO = CN()
