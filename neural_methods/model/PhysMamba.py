@@ -393,7 +393,6 @@ class PhysMambaMultiTask(nn.Module):
         spo2 : (B,T)     predicted SpO₂ (rounded 0‑100 %)
         λ    : ()        learnable task balance scalar
         """
-        print("k round:",self.k_round)
 
         b = x.size(0)
 
