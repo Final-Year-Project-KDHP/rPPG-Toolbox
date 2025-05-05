@@ -3,6 +3,7 @@
 import torch
 import torch.nn.functional as F
 from .TorchLossComputer import TorchLossComputer
+from .torchlosscomputer_fine import PSDProjector
 from evaluation.POST_PROCESS import calculate_hr
 from typing import Union
 
@@ -86,3 +87,42 @@ def frequency_loss_waveform(
         'reg':  loss_reg.item(),
         'hr_gt': hr_gt_list
     }
+
+# ── frequency_loss_waveform_fine.py ───────────────────────────────
+def frequency_loss_waveform_fine(
+    pred_wave, gt_wave, projector: PSDProjector,
+    std=3.0, tau=5.0,
+    w_ce=5.0, w_kl=2.5, w_reg=5.0
+):
+    """
+    Same signature as before but uses the vectorised projector.
+    """
+    device = pred_wave.device
+    pmf = projector(pred_wave)                       # (B,F)
+    logp = torch.log(pmf + 1e-9)
+
+    # ─ hard index
+    hr_gt_float = torch.tensor([
+        calculate_hr(pred_wave[i].detach().cpu(),
+                     gt_wave [i].detach().cpu(),
+                     diff_flag=False, fs=projector.Fs)[1]
+        for i in range(pred_wave.size(0))
+    ], device=device)   # (B,)
+
+    idx = torch.clamp(((hr_gt_float - 45) / 0.1).round().long(), 0, pmf.size(1)-1)
+
+    loss_ce  = F.nll_loss(logp, idx)
+
+    # ─ Gaussian soft target
+    bpm_vec = projector.k * 60.0                         # (F,)
+    target  = torch.exp(-0.5 * ((bpm_vec[None,:]-hr_gt_float[:,None])/std)**2)
+    target  = target / target.sum(dim=1, keepdim=True)
+    loss_kl = F.kl_div(logp, target, reduction='batchmean')
+
+    # ─ soft regression
+    exp_hr  = (pmf * bpm_vec).sum(dim=1)
+    loss_reg= F.l1_loss(exp_hr, hr_gt_float, reduction='mean')
+
+    total = w_ce*loss_ce + w_kl*loss_kl + w_reg*loss_reg
+    return total, dict(ce=loss_ce.item(), kl=loss_kl.item(),
+                       reg=loss_reg.item())

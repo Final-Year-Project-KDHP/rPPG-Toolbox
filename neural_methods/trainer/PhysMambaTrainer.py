@@ -14,7 +14,8 @@ from matplotlib.ticker import ScalarFormatter, MaxNLocator
 from neural_methods.model.PhysMamba import PhysMambaMultiTask  # <-- import your multi-task model
 from neural_methods.trainer.BaseTrainer import BaseTrainer
 from neural_methods.loss.PhysNetNegPearsonLoss import Neg_Pearson  # your existing negative Pearson
-from neural_methods.loss.FrequencyHybrid import frequency_loss_waveform
+from neural_methods.loss.FrequencyHybrid import frequency_loss_waveform,frequency_loss_waveform_fine
+from neural_methods.loss.torchlosscomputer_fine import PSDProjector
 
 from evaluation.metrics import calculate_metrics  # or your custom metric function(s)
 
@@ -94,6 +95,12 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
             self.criterion_spo2 = lambda preds, targets: torch.sqrt(
                 torch.mean((preds - targets) ** 2)
             )
+            self.psd_projector = PSDProjector(
+                    Fs   = self.fs,
+                    bpm_low  = 45,
+                    bpm_high = 150,
+                    step     = 0.1               # ← fine resolution
+            ).to(self.device)
 
         elif config.TOOLBOX_MODE == "only_test":
             # In test mode, we just create the model; no need for optimizer/scheduler
@@ -180,13 +187,21 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 # hr_loss = self.criterion_hr(rppg_pred, hr_label)        # Negative Pearson for HR
 
                 loss_np = self.criterion_hr(rppg_pred, hr_label)          # scalar
-                loss_freq, aux = frequency_loss_waveform(
-                        pred_wave   = rppg_pred,
-                        gt_wave     = hr_label,
-                        Fs          = self.fs,
-                        diff_flag   = self.diff_flag,
-                        std         = 3.0,         # or expose in YAML
-                        tau         = 1.5
+                # loss_freq, aux = frequency_loss_waveform(
+                #         pred_wave   = rppg_pred,
+                #         gt_wave     = hr_label,
+                #         Fs          = self.fs,
+                #         diff_flag   = self.diff_flag,
+                #         std         = 3.0,         # or expose in YAML
+                #         tau         = 1.5
+                #         )
+
+                loss_freq, aux = frequency_loss_waveform_fine(
+                        pred_wave=rppg_pred,
+                        gt_wave  =hr_label,
+                        projector=self.psd_projector,
+                        std=3.0, tau=5.0,
+                        w_ce=5.0, w_kl=2.5, w_reg=5.0
                         )
 
                 hr_loss  = self.w_np * loss_np + self.w_freq * loss_freq
@@ -296,14 +311,21 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 # ─ HR branch ─────────────────────────────────────────
                 # rppg_pred, hr_label normalised as before
                 loss_np = self.criterion_hr(rppg_pred, hr_label)          # scalar
-                loss_freq, aux = frequency_loss_waveform(
-                        pred_wave   = rppg_pred,
-                        gt_wave     = hr_label,
-                        Fs          = self.fs,
-                        diff_flag   = self.diff_flag,
-                        std         = 3.0,         # or expose in YAML
-                        tau         = 1.5
-                        )
+                # loss_freq, aux = frequency_loss_waveform(
+                #         pred_wave   = rppg_pred,
+                #         gt_wave     = hr_label,
+                #         Fs          = self.fs,
+                #         diff_flag   = self.diff_flag,
+                #         std         = 3.0,         # or expose in YAML
+                #         tau         = 1.5
+                #         )
+                loss_freq, aux = frequency_loss_waveform_fine(
+                        pred_wave=rppg_pred,
+                        gt_wave  =hr_label,
+                        projector=self.psd_projector,
+                        std=3.0, tau=5.0,
+                        w_ce=5.0, w_kl=2.5, w_reg=5.0
+                )
 
                 hr_loss  = self.w_np * loss_np + self.w_freq * loss_freq
 
@@ -549,7 +571,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
         )
         print("\nGround‑truth SpO₂:", spo2_gt_list)
         print("Predicted  SpO₂:",  spo2_pred_list)
-        
+
         print("=== Done ===\n")
 
 
