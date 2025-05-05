@@ -39,7 +39,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
         self.min_valid_loss = None
         self.best_epoch = 0
 
-        self.d   = getattr(config.TRAIN, "W_NEG_PEARSON", 0.2)
+        self.w_np  = getattr(config.TRAIN, "W_NEG_PEARSON", 0.2)
         self.w_freq = getattr(config.TRAIN, "W_FREQ",        0.8)
         self.diff_flag = (config.TRAIN.DATA.PREPROCESS.LABEL_TYPE == "DiffNormalized")
         self.fs        = config.TRAIN.DATA.FS
@@ -398,69 +398,197 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
 
     # ------------------------------------------------------------
 
-#   ‑‑ HR‑only evaluation  (SpO₂ ignored for now)
-# ------------------------------------------------------------
+# #   ‑‑ HR‑only evaluation  (SpO₂ ignored for now)
+# # ------------------------------------------------------------
+#     def test(self, data_loader):
+#         """Evaluate the trained model on the test set (HR branch only)."""
+#         if data_loader["test"] is None:
+#             raise ValueError("No data for test.")
+#         print("\n=== Testing (HR only) ===")
+
+#         # ── load weights ──────────────────────────────────────────
+#         if self.config.TOOLBOX_MODE == "only_test":
+#             ckpt = self.config.INFERENCE.MODEL_PATH
+#             if not os.path.exists(ckpt):
+#                 raise ValueError(f"MODEL_PATH not found: {ckpt}")
+#             print("Loading pretrained model →", ckpt)
+#         else:  # train_and_test
+#             if self.config.TEST.USE_LAST_EPOCH:
+#                 ckpt = os.path.join(
+#                     self.model_dir,
+#                     f"{self.model_file_name}_Epoch{self.max_epoch_num - 1}.pth"
+#                 )
+#                 print("Using last‑epoch model →", ckpt)
+#             else:
+#                 ckpt = os.path.join(
+#                     self.model_dir,
+#                     f"{self.model_file_name}_Epoch{self.best_epoch}.pth"
+#                 )
+#                 print("Using best‑epoch model →", ckpt)
+#         self.model.load_state_dict(torch.load(ckpt, map_location=self.device))
+
+#         self.model.eval().to(self.device)
+
+#         # ── storage dicts (HR only) ───────────────────────────────
+#         hr_predictions: dict = {}
+#         hr_labels:       dict = {}
+
+#         with torch.no_grad():
+#             tbar = tqdm(data_loader["test"], ncols=80)
+#             for batch in tbar:
+#                 vid, lbl = batch[0].to(self.device), batch[1].to(self.device)   # vid: [B,3,T,H,W] lbl: [B,2,T]
+#                 subj_ids, sort_ids = batch[2], batch[3]                         # meta
+
+#                 rppg_pred, _, _ = self.model(vid)                               # rppg_pred: [B,T]
+
+#                 for i in range(vid.size(0)):
+#                     sid  = subj_ids[i]
+#                     idx  = int(sort_ids[i])
+
+#                     if sid not in hr_predictions:
+#                         hr_predictions[sid] = {}
+#                         hr_labels[sid]      = {}
+
+#                     hr_predictions[sid][idx] = rppg_pred[i].cpu()        # waveform
+#                     hr_labels[sid][idx]      = lbl[i, 0, :].cpu()        # GT HR channel
+
+#         # ── optional pickle dump ──────────────────────────────────
+#         if self.config.TEST.OUTPUT_SAVE_DIR:
+#             self.save_test_outputs(hr_predictions, hr_labels, self.config)
+
+#         # ── metric computation ────────────────────────────────────
+#         print("\nCalculating HR metrics …")
+#         calculate_metrics(hr_predictions, hr_labels, self.config)
+
+#         # ─ SpO₂ metrics (frame‑level) ──────────────────────────────
+#         spo2_mae, spo2_rmse = self._mae_rmse(spo2_predictions, spo2_labels)
+#         print(f"\nSpO₂  →  MAE  {spo2_mae:8.4f}   RMSE {spo2_rmse:8.4f}")
+
+
+#         print("=== Done ===")
+
+    # ------------------------------------------------------------
+    # Complete test()  —  evaluates HR *and* SpO₂
+    # ------------------------------------------------------------
     def test(self, data_loader):
-        """Evaluate the trained model on the test set (HR branch only)."""
+        """Evaluate the trained model on the test set (HR + SpO₂)."""
         if data_loader["test"] is None:
             raise ValueError("No data for test.")
-        print("\n=== Testing (HR only) ===")
+        print("\n=== Testing (HR + SpO₂) ===")
 
-        # ── load weights ──────────────────────────────────────────
+        # ---------- load checkpoint ----------
         if self.config.TOOLBOX_MODE == "only_test":
             ckpt = self.config.INFERENCE.MODEL_PATH
             if not os.path.exists(ckpt):
                 raise ValueError(f"MODEL_PATH not found: {ckpt}")
-            print("Loading pretrained model →", ckpt)
+            print(f"Loading pretrained model → {ckpt}")
         else:  # train_and_test
             if self.config.TEST.USE_LAST_EPOCH:
                 ckpt = os.path.join(
                     self.model_dir,
-                    f"{self.model_file_name}_Epoch{self.max_epoch_num - 1}.pth"
+                    f"{self.model_file_name}_Epoch{self.max_epoch_num-1}.pth"
                 )
-                print("Using last‑epoch model →", ckpt)
+                print(f"Using last‑epoch model → {ckpt}")
             else:
                 ckpt = os.path.join(
                     self.model_dir,
                     f"{self.model_file_name}_Epoch{self.best_epoch}.pth"
                 )
-                print("Using best‑epoch model →", ckpt)
-        self.model.load_state_dict(torch.load(ckpt, map_location=self.device))
+                print(f"Using best‑epoch model → {ckpt}")
 
+        self.model.load_state_dict(torch.load(ckpt, map_location=self.device))
         self.model.eval().to(self.device)
 
-        # ── storage dicts (HR only) ───────────────────────────────
-        hr_predictions: dict = {}
-        hr_labels:       dict = {}
+        # ---------- storage ----------
+        hr_predictions,  hr_labels  = {}, {}
+        spo2_predictions, spo2_labels = {}, {}
 
         with torch.no_grad():
             tbar = tqdm(data_loader["test"], ncols=80)
             for batch in tbar:
-                vid, lbl = batch[0].to(self.device), batch[1].to(self.device)   # vid: [B,3,T,H,W] lbl: [B,2,T]
-                subj_ids, sort_ids = batch[2], batch[3]                         # meta
+                vid, lbl = batch[0].to(self.device), batch[1].to(self.device)   # vid [B,3,T,H,W] ; lbl [B,2,T]
+                subj_ids, sort_ids = batch[2], batch[3]
 
-                rppg_pred, _, _ = self.model(vid)                               # rppg_pred: [B,T]
+                rppg_pred, spo2_pred, _ = self.model(vid)                       # shapes [B,T]
 
                 for i in range(vid.size(0)):
                     sid  = subj_ids[i]
                     idx  = int(sort_ids[i])
 
-                    if sid not in hr_predictions:
-                        hr_predictions[sid] = {}
-                        hr_labels[sid]      = {}
+                    # ensure keys exist
+                    hr_predictions .setdefault(sid, {})
+                    hr_labels      .setdefault(sid, {})
+                    spo2_predictions.setdefault(sid, {})
+                    spo2_labels    .setdefault(sid, {})
 
-                    hr_predictions[sid][idx] = rppg_pred[i].cpu()        # waveform
-                    hr_labels[sid][idx]      = lbl[i, 0, :].cpu()        # GT HR channel
+                    # store waves (torch.Tensors on CPU)
+                    hr_predictions [sid][idx] = rppg_pred[i].cpu()
+                    hr_labels      [sid][idx] = lbl[i, 0, :].cpu()
+                    spo2_predictions[sid][idx] = spo2_pred[i].cpu()
+                    spo2_labels    [sid][idx] = lbl[i, 1, :].cpu()
 
-        # ── optional pickle dump ──────────────────────────────────
+        # ---------- optional pickle ----------
         if self.config.TEST.OUTPUT_SAVE_DIR:
-            self.save_test_outputs(hr_predictions, hr_labels, self.config)
+            self.save_test_outputs(
+                (hr_predictions,  spo2_predictions),
+                (hr_labels,       spo2_labels),
+                self.config
+            )
 
-        # ── metric computation ────────────────────────────────────
+        # ---------- HR metrics ----------
         print("\nCalculating HR metrics …")
         calculate_metrics(hr_predictions, hr_labels, self.config)
 
-        print("=== Done ===")
+        # ---------- SpO₂ metrics ----------
+        spo2_mae, spo2_rmse = self._mae_rmse(spo2_predictions, spo2_labels)
+        print(f"\nSpO₂  →  MAE  {spo2_mae:8.4f}   RMSE {spo2_rmse:8.4f}")
+
+                # ---------- pretty print scalar lists ----------
+        spo2_pred_list, spo2_gt_list = self._collect_scalar_spo2(
+            spo2_predictions, spo2_labels
+        )
+        print("\nGround‑truth SpO₂:", spo2_gt_list)
+        print("Predicted  SpO₂:",  spo2_pred_list)
+        
+        print("=== Done ===\n")
+
+
+    # ------------------------------------------------------------
+    # helper : MAE / RMSE  (keep as @staticmethod)
+    # ------------------------------------------------------------
+    @staticmethod
+    def _mae_rmse(pred_dict, gt_dict):
+        """
+        Flatten all clips → compute MAE & RMSE.
+        """
+        import numpy as np
+        preds, gts = [], []
+        for sid in pred_dict:
+            for idx in sorted(pred_dict[sid]):
+                preds.append(pred_dict[sid][idx].view(-1).numpy())
+                gts.append  (gt_dict[sid][idx].view(-1).numpy())
+        preds = np.concatenate(preds)
+        gts   = np.concatenate(gts)
+        mae  = float(np.mean(np.abs(preds - gts)))
+        rmse = float(np.sqrt(np.mean((preds - gts) ** 2)))
+        return mae, rmse
+
+        # --------------------- utils for pretty printing --------------------- #
+    @staticmethod
+    def _collect_scalar_spo2(pred_dict, gt_dict):
+        """
+        Turn each (T‑long) SpO₂ wave → one scalar (mean) per clip
+        and return two ordered python lists.
+        """
+        import numpy as np
+        preds, gts = [], []
+        for sid in sorted(gt_dict.keys()):
+            for idx in sorted(gt_dict[sid].keys()):
+                gts  .append(float(gt_dict  [sid][idx].mean().item()))
+                preds.append(float(pred_dict[sid][idx].mean().item()))
+        return preds, gts
+
+
 
 
     def save_model(self, epoch):
@@ -480,3 +608,19 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
         """
         p, q = welch(y, sr, nfft=1e5/sr, nperseg=np.min((len(y)-1, 256)))
         return p[(p > min/60) & (p < max/60)][np.argmax(q[(p > min/60) & (p < max/60)])] * 60
+
+    # @staticmethod
+    # def _mae_rmse(pred_dict, gt_dict):
+    # # import numpy as np
+    #     preds, gts = [], []
+    #     for sid in pred_dict:
+    #         # ensure identical ordering
+    #         for idx in sorted(pred_dict[sid]):
+    #             preds.append(pred_dict[sid][idx].view(-1).numpy())
+    #             gts.append  (gt_dict[sid][idx].view(-1).numpy())
+    #     preds = np.concatenate(preds)
+    #     gts   = np.concatenate(gts)
+    #     mae  = float(np.mean(np.abs(preds - gts)))
+    #     rmse = float(np.sqrt(np.mean((preds - gts) ** 2)))
+    #     return mae, rmse
+
