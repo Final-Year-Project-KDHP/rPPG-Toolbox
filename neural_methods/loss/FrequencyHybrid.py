@@ -92,12 +92,13 @@ def frequency_loss_waveform(
 def frequency_loss_waveform_fine(
     pred_wave, gt_wave, projector: PSDProjector,
     std=3.0, tau=5.0,
-    w_ce=5.0, w_kl=2.5, w_reg=5.0
+    w_ce=5.0, w_kl=2.5, w_reg=5.0, w_harm=2.0
 ):
     """
     Same signature as before but uses the vectorised projector.
     """
     device = pred_wave.device
+    B = pred_wave.size(0) 
     pmf = projector(pred_wave)                       # (B,F)
     logp = torch.log(pmf + 1e-9)
 
@@ -123,6 +124,69 @@ def frequency_loss_waveform_fine(
     exp_hr  = (pmf * bpm_vec).sum(dim=1)
     loss_reg= F.l1_loss(exp_hr, hr_gt_float, reduction='mean')
 
-    total = w_ce*loss_ce + w_kl*loss_kl + w_reg*loss_reg
+    # after power (pmf) is computed
+    h2_idx = (idx * 2).clamp(max=pmf.size(1)-1)
+    # harm_penalty = (pmf[torch.arange(B), h2_idx]).mean()  # encourages low power on 2nd harmonic
+
+    # ------------ improved harmonic penalty ------------
+    fund = pmf[torch.arange(B), idx]         # p(f0)
+    harm = pmf[torch.arange(B), h2_idx]      # p(2f0)
+    harm_penalty = (harm / (fund + 1e-6)).mean()
+
+
+    total = w_ce*loss_ce + w_kl*loss_kl + w_reg*loss_reg + w_harm*harm_penalty
+
     return total, dict(ce=loss_ce.item(), kl=loss_kl.item(),
-                       reg=loss_reg.item())
+                       reg=loss_reg.item() ,harm = harm_penalty.item())
+
+# def frequency_loss_waveform_fine(
+#     pred_wave, gt_wave, projector: PSDProjector,
+#     std=1.5, tau=3.0,
+#     w_ce=8.0, w_kl=4.0, w_reg=6.0, w_harm=2.0
+# ):
+#     """
+#     0.1‑bpm resolution frequency loss with harmonic penalty.
+#     Returns (scalar_loss, diagnostics_dict)
+#     """
+#     device = pred_wave.device
+#     B = pred_wave.size(0)                       # <-- NEW
+#     pmf = projector(pred_wave)                  # (B,F) normalised PSD
+#     logp = torch.log(pmf + 1e-9)
+
+#     # ─ ground‑truth HR (float, no rounding)
+#     hr_gt_float = torch.tensor([
+#         calculate_hr(pred_wave[i].detach().cpu(),
+#                      gt_wave [i].detach().cpu(),
+#                      diff_flag=False, fs=projector.Fs)[1]
+#         for i in range(B)
+#     ], device=device)
+
+#     # ─ hard CE index (0.1‑bpm step)
+#     idx = torch.clamp(((hr_gt_float - 45.) / 0.1).round().long(),
+#                       0, pmf.size(1)-1)
+#     loss_ce = F.nll_loss(logp, idx)
+
+#     # ─ soft KL target
+#     bpm_vec = projector.k * 60.                 # (F,)
+#     target   = torch.exp(-0.5*((bpm_vec[None]-hr_gt_float[:,None])/std)**2)
+#     target   = target / target.sum(dim=1, keepdim=True)
+#     loss_kl  = F.kl_div(logp, target, reduction='batchmean')
+
+#     # ─ regression in expectation space
+#     exp_hr   = (pmf * bpm_vec).sum(dim=1)
+#     loss_reg = F.l1_loss(exp_hr, hr_gt_float, reduction='mean')
+
+#     # ─ second‑harmonic penalty
+#     h2_idx = (idx*2).clamp(max=pmf.size(1)-1)
+#     harm_penalty = pmf[torch.arange(B, device=device), h2_idx].mean()
+
+#     total = (w_ce*loss_ce + w_kl*loss_kl +
+#              w_reg*loss_reg + w_harm*harm_penalty)
+
+#     return total, dict(
+#         ce   = loss_ce.item(),
+#         kl   = loss_kl.item(),
+#         reg  = loss_reg.item(),
+#         harm = harm_penalty.item()
+#     )
+

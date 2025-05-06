@@ -40,8 +40,8 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
         self.min_valid_loss = None
         self.best_epoch = 0
 
-        self.w_np  = getattr(config.TRAIN, "W_NEG_PEARSON", 0.2)
-        self.w_freq = getattr(config.TRAIN, "W_FREQ",        0.8)
+        self.w_np  = getattr(config.TRAIN, "W_NEG_PEARSON", 0.4)
+        self.w_freq = getattr(config.TRAIN, "W_FREQ",        0.6)
         self.diff_flag = (config.TRAIN.DATA.PREPROCESS.LABEL_TYPE == "DiffNormalized")
         self.fs        = config.TRAIN.DATA.FS
 
@@ -200,8 +200,8 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                         pred_wave=rppg_pred,
                         gt_wave  =hr_label,
                         projector=self.psd_projector,
-                        std=3.0, tau=5.0,
-                        w_ce=5.0, w_kl=2.5, w_reg=5.0
+                        std=0.8, tau=3.0,
+                        w_ce=10.0, w_kl=6.0, w_reg=2.0,w_harm=0.0
                         )
 
                 hr_loss  = self.w_np * loss_np + self.w_freq * loss_freq
@@ -212,6 +212,10 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 # Backpropagation
                 self.optimizer.zero_grad()
                 total_loss.backward()
+
+                # 3. clip the global ℓ2‑norm *here*
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+
                 self.optimizer.step()
                 self.scheduler.step()
 
@@ -323,9 +327,9 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                         pred_wave=rppg_pred,
                         gt_wave  =hr_label,
                         projector=self.psd_projector,
-                        std=3.0, tau=5.0,
-                        w_ce=5.0, w_kl=2.5, w_reg=5.0
-                )
+                        std=0.8, tau=3.0,
+                        w_ce=10.0, w_kl=6.0, w_reg=2.0,w_harm=0.0
+                        )
 
                 hr_loss  = self.w_np * loss_np + self.w_freq * loss_freq
 
