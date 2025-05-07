@@ -79,6 +79,10 @@ def train_and_test(config, data_loader_dict):
         model_trainer = trainer.PhysFormerTrainer.PhysFormerTrainer(config, data_loader_dict)
     else:
         raise ValueError('Your Model is Not Supported  Yet!')
+    # if config.MODEL.NAME == "Physnet":
+    #     # model_trainer.train()
+    #     model_trainer.test(data_loader_dict)
+    # else:
     model_trainer.train(data_loader_dict)
     # model_trainer.test(data_loader_dict)
 
@@ -101,6 +105,9 @@ def test(config, data_loader_dict):
         model_trainer = trainer.PhysFormerTrainer.PhysFormerTrainer(config, data_loader_dict)
     else:
         raise ValueError('Your Model is Not Supported  Yet!')
+    # if config.MODEL.NAME == "Physnet":
+    #     model_trainer.test()
+    # else:
     model_trainer.test(data_loader_dict)
 
 
