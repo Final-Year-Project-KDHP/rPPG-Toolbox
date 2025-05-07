@@ -4,6 +4,11 @@ import torch
 from evaluation.post_process import *
 from tqdm import tqdm
 from evaluation.BlandAltmanPy import BlandAltman
+from scipy.stats import beta
+import os
+import matplotlib.pyplot as plt
+from collections import Counter
+from scipy.ndimage import convolve1d
 
 def read_label(dataset):
     """Read manually corrected labels."""
@@ -222,3 +227,120 @@ def calculate_metrics(predictions, labels, config):
                 raise ValueError("Wrong Test Metric Type")
     else:
         raise ValueError("Inference evaluation method name wrong!")
+    
+
+
+def plot_label_distribution(data_loader, save_dir, filename="label_distribution.png", bin_data_file="label_bins.npy"):
+    labels = []
+    for batch in data_loader:
+        # Expecting: (data, label_tensor, [optional filename])
+        label_batch = batch[1]  # shape: [B, 2, T]
+        label_values = label_batch[:, 1:2, :].mean(dim=(1, 2)).cpu().numpy()
+        labels.extend(label_values.tolist())
+
+    # Filter out values below 90
+    labels = [label for label in labels if label >= 90]
+
+    # Define bins for SpO₂ values from 90 to 100 inclusive
+    bins = np.arange(89.5, 101.5, 1)
+    y, x = np.histogram(labels, bins=bins)
+
+    # Bin centers for easier interpretation and plotting
+    bin_centers = (x[:-1] + x[1:]) / 2
+
+    # Plot
+    plt.figure(figsize=(10, 6))
+    plt.bar(bin_centers, y, width=1.0, align='center')
+    plt.title("Mean SpO₂ Label Distribution per Video (≥ 90)")
+    plt.xlabel("Mean SpO₂ Value")
+    plt.ylabel("Video Count")
+    plt.grid(True)
+
+    os.makedirs(save_dir, exist_ok=True)
+    plt.savefig(os.path.join(save_dir, filename))
+    plt.close()
+
+    # Save bin data (counts and bin centers) to file for later analysis
+    bin_data = {"bin_centers": bin_centers, "counts": y}
+    np.save(os.path.join(save_dir, bin_data_file), bin_data)
+
+    # Return for use in code (optional)
+    return bin_centers, y
+
+def get_lds_kernel_window(kernel='gaussian', ks=5, sigma=2):
+    assert kernel == 'gaussian', "Only gaussian supported"
+    half_ks = (ks - 1) // 2
+    base = np.arange(-half_ks, half_ks + 1)
+    kernel = np.exp(-0.5 * (base / sigma) ** 2)
+    kernel /= kernel.sum()
+    return kernel
+
+def get_exponential_kernel(ks=5, decay=1.0, direction="right"):
+    base = np.arange(ks)
+    if direction == "left":
+        base = base[::-1]
+    kernel = np.exp(-base / decay)
+    kernel /= kernel.sum()
+    return kernel
+
+
+
+def get_beta_kernel(ks=15, a=2, b=5):
+    x = np.linspace(0, 1, ks)
+    kernel = beta.pdf(x, a, b)
+    kernel /= kernel.sum()
+    return kernel
+
+
+def compute_lds_weights_with_plots(mean_labels, save_dir, num_bins=50, ks=7, a=2, b=5):
+    os.makedirs(save_dir, exist_ok=True)
+
+    # Filter labels >= 90
+    filtered_labels = [x for x in mean_labels if x >= 90]
+
+    # Define bin edges and digitize
+    bin_edges = np.linspace(90, 100, num_bins + 1)
+    bin_indices = np.digitize(filtered_labels, bin_edges) - 1
+
+    # Empirical distribution
+    count_per_bin = dict(Counter(bin_indices))
+    emp_dist = [count_per_bin.get(i, 0) for i in range(num_bins)]
+
+    # Apply smoothing
+    lds_kernel = get_beta_kernel(ks=ks, a=a, b=b)
+    eff_dist = convolve1d(np.array(emp_dist), weights=lds_kernel, mode='constant')
+
+    # Compute bin centers for plotting
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+
+    # Plot empirical distribution
+    plt.figure(figsize=(10, 5))
+    plt.bar(bin_centers, emp_dist, width=(bin_edges[1] - bin_edges[0]), color='skyblue')
+    plt.title("Original Label Distribution")
+    plt.xlabel("Mean SpO₂")
+    plt.ylabel("Frequency")
+    plt.grid(True)
+    plt.savefig(os.path.join(save_dir, "label_distribution_original.png"))
+    plt.close()
+
+    # Plot smoothed distribution
+    plt.figure(figsize=(10, 5))
+    plt.bar(bin_centers, eff_dist, width=(bin_edges[1] - bin_edges[0]), color='salmon')
+    plt.title("Smoothed Label Distribution (Beta Kernel)")
+    plt.xlabel("Mean SpO₂")
+    plt.ylabel("Smoothed Frequency")
+    plt.grid(True)
+    plt.savefig(os.path.join(save_dir, "label_distribution_smoothed.png"))
+    plt.close()
+
+    # Compute weights for all labels
+    weights = []
+    for label in mean_labels:
+        if label < 90:
+            weights.append(0.0)
+        else:
+            bin_idx = np.digitize(label, bin_edges) - 1
+            eff_freq = eff_dist[bin_idx]
+            weights.append(float(1.0 / (eff_freq + 1e-6)))
+
+    return weights

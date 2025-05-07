@@ -15,10 +15,49 @@ import pdb
 import torch
 import torch.nn as nn
 from torch.nn.modules.utils import _triple
+from torch.nn import functional as F
+
+def safe_exp(x: torch.Tensor) -> torch.Tensor:
+    """
+    Smooth alternative to torch.exp to prevent overflow.
+    Keeps x smoothly bounded by using tanh(x / 100) * 100 inside the exponent.
+    """
+    return torch.exp(torch.tanh(x / 400) * 400)
+
+def rounding_sigmoid_approximation(x: torch.Tensor, k: float, n_max: int = 100) -> torch.Tensor:
+    """
+    Vectorized, differentiable sigmoid-based approximation of a rounding function,
+    using a safe_exp to avoid overflow issues.
+    
+    Returns the same shape as the input.
+    """
+    # Convert x to float64 for more stable summations
+    x = x.to(torch.float32)
+    
+    # Create a tensor of all integer n values in the range [-n_max, ..., n_max]
+    # shape: [2 * n_max + 1]
+    n_values = torch.arange(-n_max, n_max + 1, dtype=torch.float32, device=x.device)  
+    
+    # Expand x and n_values for broadcasting
+    x_expanded = x.unsqueeze(-1)               # shape: [batch_size, 1, 1]
+    n_expanded = n_values.view(1, 1, -1)       # shape: [1, 1, 2*n_max+1]
+    
+    exponent1 = -k * (x_expanded - n_expanded + 0.5)  # [batch_size, 1, 2*n_max+1]
+    exponent2 = -k * (x_expanded - n_expanded - 0.5)  # [batch_size, 1, 2*n_max+1]
+    
+    # Compute "safe" exponent terms
+    term1 = n_expanded / (1 + safe_exp(exponent1))    # [batch_size, 1, 2*n_max+1]
+    term2 = n_expanded / (1 + safe_exp(exponent2))    # [batch_size, 1, 2*n_max+1]
+    
+    # Summation over the last dimension (the n-values dimension),
+    # and squeeze the unnecessary dimension
+    result = (term1 - term2).sum(dim=-1, keepdim=True).squeeze(-1)  # [batch_size, 1]
+    
+    return result
 
 
 class PhysNet_padding_Encoder_Decoder_MAX(nn.Module):
-    def __init__(self, frames=128):
+    def __init__(self, frames=60):
         super(PhysNet_padding_Encoder_Decoder_MAX, self).__init__()
 
         self.ConvBlock1 = nn.Sequential(
@@ -89,7 +128,8 @@ class PhysNet_padding_Encoder_Decoder_MAX(nn.Module):
 
         # self.poolspa = nn.AdaptiveMaxPool3d((frames,1,1))    # pool only spatial space
         self.poolspa = nn.AdaptiveAvgPool3d((frames, 1, 1))
-        self.fc = nn.Linear(60, 1)  # Reduces [B, 1, 160] to [B, 1]
+        self.fc = nn.Linear(frames, 1)  # Reduces [B, 1, 160] to [B, 1]
+        # self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):  # Batch_size*[3, T, 128,128]
         x_visual = x
@@ -123,5 +163,7 @@ class PhysNet_padding_Encoder_Decoder_MAX(nn.Module):
         rPPG = x.view(-1, length)
         rPPG = rPPG.squeeze(1)
         output = self.fc(rPPG)
+        # output = 100 * torch.sigmoid(output)
+        # output = rounding_sigmoid_approximation(output, 10)       # output = rounding_sigmoid_approximation(output, 1000)
 
         return output, x_visual, x_visual3232, x_visual1616

@@ -6,13 +6,16 @@ from collections import OrderedDict
 import numpy as np
 import torch
 import torch.optim as optim
-from evaluation.metrics import calculate_metrics
+from evaluation.metrics import plot_label_distribution, compute_lds_weights_with_plots
 from neural_methods.loss.PhysNetNegPearsonLoss import Neg_Pearson
 from neural_methods.model.PhysNet import PhysNet_padding_Encoder_Decoder_MAX
 from neural_methods.trainer.BaseTrainer import BaseTrainer
 from torch.autograd import Variable
 import torch.nn.functional as F
 from tqdm import tqdm
+import torch.nn as nn
+
+
 
 
 class PhysnetTrainer(BaseTrainer):
@@ -36,7 +39,8 @@ class PhysnetTrainer(BaseTrainer):
 
         if config.TOOLBOX_MODE == "train_and_test":
             self.num_train_batches = len(data_loader["train"])
-            self.loss_model = Neg_Pearson()
+            # self.loss_fn = self.custom_loss  # You can adjust delta (default is 1.0)
+
             self.optimizer = optim.Adam(
                 self.model.parameters(), lr=config.TRAIN.LR)
             # See more details on the OneCycleLR scheduler here: https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.OneCycleLR.html
@@ -55,6 +59,12 @@ class PhysnetTrainer(BaseTrainer):
         mean_training_losses = []
         mean_valid_losses = []
         lrs = []
+        # plot_label_distribution(
+        #     data_loader=data_loader["train"],
+        #     save_dir=self.config.LOG.PATH,
+        #     filename="label_distribution.png"
+        # )
+
         if self.config.TRAIN.CONTINUE_TRAIN:
             print("Loading checkpoint")
             checkpoint = torch.load(self.config.INFERENCE.MODEL_PATH)
@@ -74,54 +84,46 @@ class PhysnetTrainer(BaseTrainer):
               data, label, filename = batch[0].to(torch.float32).to(self.device), \
                                       batch[1].to(torch.float32).to(self.device), \
                                       batch[2]
-              label = np.squeeze(label[:, 1:2, :], axis=1)
+              label = batch[1][:, 1:2, :].squeeze(1).to(dtype=torch.float32, device=self.device)
+              mean_label = label.mean(dim=1)
+              mask = mean_label >= 90
+              if mask.sum() == 0:
+                continue  # Skip this batch if no valid samples
+              data, label, mean_label = data[mask], label[mask], mean_label[mask]
+
+
+              # Forward + Backward: concatenate along batch dimension
+              reversed_data = torch.flip(data, dims=[2])  # flip along time dimension
+              reversed_label = torch.flip(label, dims=[1])  # same flip for label
+              reversed_mean_label = reversed_label.mean(dim=1)
+
+              # Merge forward + backward
+              data_combined = torch.cat([data, reversed_data], dim=0)
+              label_combined = torch.cat([label, reversed_label], dim=0)
+              mean_label_combined = torch.cat([mean_label, reversed_mean_label], dim=0)
+            
+              mean_label_np = mean_label_combined.detach().cpu().numpy().tolist()
+              lds_weights = compute_lds_weights_with_plots(save_dir=self.config.LOG.PATH,mean_labels=mean_label_np)
+              lds_weights = torch.tensor(lds_weights, dtype=torch.float32, device=self.device)
 
               rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data)
-              #print("rspo2",rspo2)
-              # Check if rspo2 contains NaN values
-              # if torch.isnan(rspo2).any():
-              #     count += 1
-              #     print(f"NaN detected in rspo2 for batch {idx}. Skipping this batch.")
-              #     continue 
+            
+              sample_loss = F.mse_loss(rspo2.squeeze(), mean_label_combined, reduction='none')
+              weighted_loss = sample_loss * lds_weights
+              loss = torch.sqrt(weighted_loss.mean())
 
-              # Compute loss
-              rmse_loss = 0.0
-              for bb in range(data.shape[0]):
-                  rspo2_value = rspo2[bb] if isinstance(rspo2[bb], torch.Tensor) else torch.tensor(rspo2[bb].item(), device=label[bb].device)
-                  label_value = label[bb].mean().float()
-                  # if torch.isnan(rspo2).any() or torch.isnan(label).any():
-                  #     print(f"rspo2: {rspo2}, label: {label}")
-                  rmse_loss += torch.sqrt(F.mse_loss(rspo2_value, label_value))
-              rmse_loss /= data.shape[0]
-
-              # Check if loss is NaN
-              if torch.isnan(rmse_loss):
-                  count += 1
-                  print(f"NaN detected in loss for batch {idx}. Skipping backpropagation.", rspo2,label_value)
-                  continue  # Skip this batch
-
-              # Backward pass
-              loss = rmse_loss
+            #   loss = F.mse_loss(rspo2.squeeze(), mean_label, reduction='mean')  # pure MSE
+            #   loss = torch.sqrt(loss)
               loss.backward()
-
-              # Check for NaN gradients
-              for param in self.model.parameters():
-                  if torch.isnan(param.grad).any():
-                      print("NaN detected in gradients. Skipping optimizer step.")
-                      self.optimizer.zero_grad()  # Reset gradients
-                      continue
-
               running_loss += loss.item()
               train_loss.append(loss.item())
 
               # Optimizer step
               self.optimizer.step()
               self.scheduler.step()
+              lrs.append(self.scheduler.get_last_lr()[0]) 
               self.optimizer.zero_grad()  # Reset gradients
               tbar.set_postfix(loss=loss.item())
-            print("count : ",count)
-
-
             # Append the mean training loss for the epoch
             mean_training_losses.append(np.mean(train_loss))
 
@@ -145,42 +147,44 @@ class PhysnetTrainer(BaseTrainer):
         if self.config.TRAIN.PLOT_LOSSES_AND_LR:
             self.plot_losses_and_lrs(mean_training_losses, mean_valid_losses, lrs, self.config)
 
+    
+
     def valid(self, data_loader):
-        """ Runs the model on valid sets."""
         if data_loader["valid"] is None:
             raise ValueError("No data for valid")
 
-        print('')
-        print(" ====Validing===")
+        print("\n ====Validing===")
         valid_loss = []
         self.model.eval()
-        valid_step = 0
+
         with torch.no_grad():
             vbar = tqdm(data_loader["valid"], ncols=80)
             for valid_idx, valid_batch in enumerate(vbar):
                 vbar.set_description("Validation")
-                data, label = valid_batch[0].to(torch.float32).to(self.device), valid_batch[1].to(torch.float32).to(self.device)
-                label= np.squeeze(label[:,1:2,:],axis=1)
-                # BVP_label = valid_batch[1].to(
-                #     torch.float32).to(self.device)
-                rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data)
-                # rPPG = (rPPG - torch.mean(rPPG)) / torch.std(rPPG)  # normalize
-                # BVP_label = (BVP_label - torch.mean(BVP_label)) / \
-                #             torch.std(BVP_label)  # normalize
+                data, label = valid_batch[0].to(torch.float32).to(self.device), \
+                              valid_batch[1].to(torch.float32).to(self.device)
+                label = label[:, 1:2, :].squeeze(1)
+                mean_label = label.mean(dim=1)
 
-                rmse_loss = 0.0
-                for bb in range(data.shape[0]):
-                    rspo2_value = torch.tensor(rspo2[bb].item(), device=label[bb].device) if not isinstance(rspo2[bb], torch.Tensor) else rspo2[bb]
-                    label_value = label[bb].mean().float()
-                    valid_loss.append(F.mse_loss(rspo2_value, label_value))
-                
-                # loss_ecg = self.loss_model(rPPG, BVP_label)
-                valid_step += 1
-                # vbar.set_postfix(loss=rmse_loss.item())
-            # valid_loss = np.asarray(valid_loss)
-            spo2_errors_tensor = torch.stack(valid_loss)  # Stack into a single tensor
-            RMSE = torch.sqrt(spo2_errors_tensor.mean())
+                mask = mean_label >= 90
+                if mask.sum() == 0:
+                    continue
+                data, mean_label = data[mask], mean_label[mask]
+
+                rspo2, *_ = self.model(data)
+                loss = F.mse_loss(rspo2.squeeze(), mean_label, reduction='none')
+                valid_loss.append(loss)
+
+            if len(valid_loss) == 0:
+                return torch.tensor(float('nan'))
+
+            all_losses = torch.cat(valid_loss)
+            RMSE = torch.sqrt(all_losses.mean())
+
         return RMSE
+
+        
+
 
     def test(self, data_loader):
         """ Runs the model on test sets."""
@@ -225,6 +229,7 @@ class PhysnetTrainer(BaseTrainer):
         test_loss = []
         rspo2_values = []
         label_values = []
+        test_mae=[]
         with torch.no_grad():
             for _, test_batch in enumerate(tqdm(data_loader["test"], ncols=80)):
                 batch_size = test_batch[0].shape[0]
@@ -241,6 +246,9 @@ class PhysnetTrainer(BaseTrainer):
                     rspo2 = rspo2.cpu()
 
                 for idx in range(batch_size):
+                    label_mean = label[idx].mean().item()
+                    if label_mean < 90:
+                        continue  # Skip samples where mean SpO2 < 90
                     subj_index = test_batch[2][idx]
                     sort_index = int(test_batch[3][idx])
                     if subj_index not in predictions.keys():
@@ -257,17 +265,20 @@ class PhysnetTrainer(BaseTrainer):
                     label_values.append(label_value.item())
 
                     test_loss.append(F.mse_loss(rspo2_value, label_value))
+                    test_mae.append(F.l1_loss(rspo2_value, label_value))
                     labels[subj_index][sort_index] = label[idx]
 
         print('')
         spo2_errors_tensor = torch.stack(test_loss)  # Stack into a single tensor
         RMSE = torch.sqrt(spo2_errors_tensor.mean())
         print(rspo2_values)
-        print(label_values)
+        # print(label_values)
         print("RMSE:", RMSE.item(), "\nPredicted SpO2 value:", np.mean(rspo2_values), "\nGround Truth value:", np.mean(label_values))
+        MAE= torch.mean(torch.stack(test_mae))
+        print("MAE:", MAE.item())
         # calculate_metrics(predictions, labels, self.config)
-        # if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs 
-        #     self.save_test_outputs(predictions, labels, self.config)
+        if self.config.TEST.OUTPUT_SAVE_DIR: # saving test outputs 
+            self.save_test_outputs(predictions, labels, self.config)
 
     def save_model(self, index):
         if not os.path.exists(self.model_dir):
@@ -277,3 +288,5 @@ class PhysnetTrainer(BaseTrainer):
         torch.save({"model_state_dict":self.model.state_dict(),
                     "optimizer_state_dict":self.optimizer.state_dict()}, model_path)
         print('Saved Model Path: ', model_path)
+    
+    
