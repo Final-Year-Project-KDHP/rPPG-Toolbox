@@ -106,7 +106,7 @@ class PhysnetTrainer(BaseTrainer):
               lds_weights = compute_lds_weights_with_plots(save_dir=self.config.LOG.PATH,mean_labels=mean_label_np)
               lds_weights = torch.tensor(lds_weights, dtype=torch.float32, device=self.device)
 
-              rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data)
+              rspo2, x_visual, x_visual3232, x_visual1616 = self.model(data_combined)
             
               sample_loss = F.mse_loss(rspo2.squeeze(), mean_label_combined, reduction='none')
               weighted_loss = sample_loss * lds_weights
