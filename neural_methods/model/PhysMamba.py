@@ -6,6 +6,8 @@ from typing import Optional, List, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+import torch.fft
 from timm.models.layers import trunc_normal_, DropPath        # noqa: F401  (kept in case you use them elsewhere)
 from mamba_ssm import Mamba
 
@@ -36,6 +38,48 @@ def rounding_sigmoid_approximation(
 # -------------------------------------------------------------------------
 # Building blocks
 # -------------------------------------------------------------------------
+class Frequencydomain_FFN(nn.Module):
+    def __init__(self, dim, mlp_ratio=2):
+        super().__init__()
+        self.hidden_dim = dim * mlp_ratio
+        # time→hidden
+        self.fc1 = nn.Sequential(
+            nn.Conv1d(dim,   self.hidden_dim, 1, bias=False),
+            nn.BatchNorm1d(self.hidden_dim),
+            nn.ReLU(inplace=True),
+        )
+        # hidden→time
+        self.fc2 = nn.Sequential(
+            nn.Conv1d(self.hidden_dim, dim,   1, bias=False),
+            nn.BatchNorm1d(dim),
+        )
+        # learnable real/imag mixing
+        self.scale = 0.02
+        self.r = nn.Parameter(self.scale * torch.randn(self.hidden_dim, self.hidden_dim))
+        self.i = nn.Parameter(self.scale * torch.randn(self.hidden_dim, self.hidden_dim))
+        self.rb = nn.Parameter(self.scale * torch.randn(self.hidden_dim))
+        self.ib = nn.Parameter(self.scale * torch.randn(self.hidden_dim))
+
+    def forward(self, x):
+        # x: [B, N, C]  (N=time, C=dim)
+        B, N, C = x.shape
+        # → [B, C, N] → hidden → [B, hidden_dim, N]
+        h = self.fc1(x.transpose(1,2))
+        # → [B, N, hidden_dim]
+        h = h.transpose(1,2)
+        # FFT over time axis
+        H = torch.fft.fft(h, dim=1, norm='ortho')
+        # mix real/imag
+        Hr = F.relu( H.real @ self.r.t() - H.imag @ self.i.t() + self.rb )
+        Hi = F.relu( H.imag @ self.r.t() + H.real @ self.i.t() + self.ib )
+        H_ = torch.view_as_complex(torch.stack([Hr, Hi], dim=-1))
+        # back to time
+        h2 = torch.fft.ifft(H_, dim=1, norm='ortho').real
+        # → [B, hidden_dim, N] → [B, C, N]
+        y = self.fc2(h2.transpose(1,2)).transpose(1,2)
+        return y  # [B, N, C]
+
+
 class ChannelAttention3D(nn.Module):
     def __init__(self, in_channels: int, reduction: int):
         super().__init__()
@@ -353,6 +397,10 @@ class PhysMambaMultiTask(nn.Module):
         self.ConvLast_hr = nn.Conv3d(48, 1, 1)
         self.ConvLast_spo2 = nn.Conv3d(48, 1, 1)
 
+        # ---------- Frequency block for HR branch ----------
+        # we'll apply this to the pooled [B,48,frames,1,1] features
+        self.freq_ffn_hr = Frequencydomain_FFN(dim=48, mlp_ratio=2)
+
         # Optional learnable loss‑balance λ
         raw_init = math.log(init_lambda / (1.0 - init_lambda))
         self._lambda_raw = nn.Parameter(
@@ -476,7 +524,21 @@ class PhysMambaMultiTask(nn.Module):
         feat_r = self.shared_mlp(feat_r)
         feat_s = self.shared_mlp(feat_s)
 
-        rppg = self.ConvLast_hr(self.hr_head_norm(feat_r)).view(b, self.frames)
+        # rppg = self.ConvLast_hr(self.hr_head_norm(feat_r)).view(b, self.frames)
+
+                # apply freq-domain FFN along the time axis on feat_r
+        # 1) squeeze spatial dims → [B,48,frames]
+        x = feat_r.squeeze(-1).squeeze(-1)             # [B,48,T]
+        # 2) permute to [B,T,48]
+        x = x.permute(0,2,1)
+        # 3) spectral FFN → [B,T,48]
+        x = self.freq_ffn_hr(x)
+        # 4) back to [B,48,T,1,1]
+        x = x.permute(0,2,1).unsqueeze(-1).unsqueeze(-1)
+        # 5) finish with norm & conv
+        rppg = self.ConvLast_hr(self.hr_head_norm(x)).view(b, self.frames)
+
+
         spo2 = self.ConvLast_spo2(self.spo2_head_norm(feat_s)).view(b, self.frames)
         # spo2 = rounding_sigmoid_approximation(100.0 * torch.sigmoid(spo2), k=10.0)
         spo2 = rounding_sigmoid_approximation(100.0 * torch.sigmoid(spo2), k=self.k_round)

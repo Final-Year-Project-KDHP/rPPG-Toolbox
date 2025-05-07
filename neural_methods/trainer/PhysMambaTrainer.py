@@ -199,9 +199,15 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 loss_freq, aux = frequency_loss_waveform_fine(
                         pred_wave=rppg_pred,
                         gt_wave  =hr_label,
-                        projector=self.psd_projector,
-                        std=0.8, tau=3.0,
-                        w_ce=10.0, w_kl=6.0, w_reg=2.0,w_harm=0.0
+                        projector=self.psd_projector,   
+                        std=0.8,            # KL‑Gaussian σ (bpm) – can anneal outside
+                        tau=2.5,            # temperature for soft‑regression
+                        w_ce=6.0,
+                        w_kl=6.0,
+                        w_reg=3.0,
+                        w_harm=10.0,        # weight for ratio loss
+                        eps_bpm=8.0,        # half‑window around 2 f₀
+                        r_max=0.15          # allowed power ratio P₂f / P₁f
                         )
 
                 hr_loss  = self.w_np * loss_np + self.w_freq * loss_freq
@@ -326,9 +332,15 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 loss_freq, aux = frequency_loss_waveform_fine(
                         pred_wave=rppg_pred,
                         gt_wave  =hr_label,
-                        projector=self.psd_projector,
-                        std=0.8, tau=3.0,
-                        w_ce=10.0, w_kl=6.0, w_reg=2.0,w_harm=0.0
+                        projector=self.psd_projector,   
+                        std=0.8,            # KL‑Gaussian σ (bpm) – can anneal outside
+                        tau=2.5,            # temperature for soft‑regression
+                        w_ce=6.0,
+                        w_kl=6.0,
+                        w_reg=3.0,
+                        w_harm=10.0,        # weight for ratio loss
+                        eps_bpm=8.0,        # half‑window around 2 f₀
+                        r_max=0.15          # allowed power ratio P₂f / P₁f
                         )
 
                 hr_loss  = self.w_np * loss_np + self.w_freq * loss_freq
