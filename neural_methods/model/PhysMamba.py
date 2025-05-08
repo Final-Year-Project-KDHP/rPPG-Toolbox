@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from timm.models.layers import trunc_normal_, DropPath        # noqa: F401  (kept in case you use them elsewhere)
 from mamba_ssm import Mamba
-
+from neural_methods.model.freq_ffn import Frequencydomain_FFN 
 # -------------------------------------------------------------------------
 # Utility helpers
 # -------------------------------------------------------------------------
@@ -175,6 +175,31 @@ class CrossScaleFuse(nn.Module):
             w1, w2, w3 = self.coeff.split(1, dim=1)
         return w1 * f1 + w2 * f2 + w3 * f3
 
+# ------------------------------------------------------------------
+class HRExpertFFN(nn.Module):
+    """
+    Conv‑reduce (1×1×1)  →  Frequencydomain_FFN (on temporal axis)
+    Keeps output shape identical to the original Conv3d expert:
+        in : (B,C_in,T,H,W)   out : (B,C_out,T,1,1)
+    """
+    def __init__(self, c_in: int, c_out: int, mlp_ratio: int = 2):
+        super().__init__()
+        self.conv = nn.Conv3d(c_in, c_out, kernel_size=1)
+        self.ffn  = Frequencydomain_FFN(c_out, mlp_ratio=mlp_ratio)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x = self.conv(x)                            # (B,C_out,T,1,1)   H=W=1 already
+        # b, c, t, _, _ = x.shape
+        # x = x.view(b, c, t).permute(0, 2, 1)        # (B,T,C)
+        x = self.conv(x)                            # (B,C_out,T,H,W)
+        # --- NEW: average over space so H=W=1 ------------------
+        x = x.mean(dim=(3, 4), keepdim=False)       # (B,C_out,T)
+        b, c, t = x.shape
+        x = x.permute(0, 2, 1)                      # (B,T,C)
+        x = self.ffn(x)                             # (B,T,C)
+        # x = x.permute(0, 2, 1).view(b, c, t, 1, 1)  # back to 5‑D
+        x = x.permute(0, 2, 1).unsqueeze(-1).unsqueeze(-1)  # (B,C,T,1,1)
+        return x
 
 # -------------------------------------------------------------------------
 # Router (lightweight gating between *task* vs *shared* experts)
@@ -319,6 +344,7 @@ class PhysMambaMultiTask(nn.Module):
         self.router1_rppg = Router(64)
         self.router1_spo2 = Router(64)
         self.expert1_rppg = nn.Conv3d(64, 48, 1)
+        # self.expert1_rppg  = HRExpertFFN(64, 48)            # ← NEW
         self.expert1_spo2 = nn.Conv3d(64, 48, 1)
         self.expert1_shared = nn.Conv3d(64, 48, 1)
 
@@ -326,6 +352,7 @@ class PhysMambaMultiTask(nn.Module):
         self.router2_rppg = Router(64)
         self.router2_spo2 = Router(64)
         self.expert2_rppg = nn.Conv3d(64, 48, 1)
+        # self.expert2_rppg  = HRExpertFFN(64, 48)            # ← NEW
         self.expert2_spo2 = nn.Conv3d(64, 48, 1)
         self.expert2_shared = nn.Conv3d(64, 48, 1)
 
@@ -333,6 +360,7 @@ class PhysMambaMultiTask(nn.Module):
         self.routerP_rppg = Router(48)
         self.routerP_spo2 = Router(48)
         self.expertP_rppg = nn.Conv3d(48, 48, 1)
+        # self.expertP_rppg  = HRExpertFFN(48, 48)            # ← NEW  (in=out=48)
         self.expertP_spo2 = nn.Conv3d(48, 48, 1)
         self.expertP_shared = nn.Conv3d(48, 48, 1)
 

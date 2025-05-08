@@ -1,10 +1,10 @@
 BASE: ['']
-TOOLBOX_MODE: "only_test"  # "train_and_test" or "only_test"
+TOOLBOX_MODE: "train_and_test"  # "train_and_test" or "only_test"
 TRAIN:
   BATCH_SIZE: 4
   EPOCHS: 50      
   LR: 4e-4
-  MODEL_FILE_NAME: PURE_PURE_PURE_PhysMambaSF_fc_sig_round_mlti_shrdMLP_tasknorm_samedim_moe_pertsk_scalefuse_3layer_all_config_freqloss
+  MODEL_FILE_NAME: PURE_PURE_PURE_PhysMambaSF_fc_sig_round_mlti_shrdMLP_tasknorm_samedim_moe_pertsk_scalefuse_3layer_all_config_freqloss_harm_16
   PLOT_LOSSES_AND_LR: True
   LEARNABLE_BALANCE: False      # if False, λ will stay at INIT_LAMBDA
   INIT_LAMBDA: 0.1             # initial λ in (0,1)
@@ -115,4 +115,4 @@ INFERENCE:
   EVALUATION_WINDOW:
     USE_SMALLER_WINDOW: False
     WINDOW_SIZE: 10                     # Evaluation window size in seconds
-  MODEL_PATH: "/home/ddew0188/videopulse/rppg-toolbox/rppg-toolbox1multi/runs/exp/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse/storage/PhysMambaSF_sp/TrainedModels/PURE_PURE_PURE_PhysMambaSF_fc_sig_round_mlti_shrdMLP_tasknorm_samedim_moe_pertsk_scalefuse_3layer_all_config_freqloss_Epoch15.pth"
+  MODEL_PATH: "/home/ddew0188/videopulse/rppg-toolbox/rppg-toolbox1multi/runs/exp/PURE_SizeW128_SizeH128_ClipLength128_DataTypeDiffNormalized_DataAugNone_LabelTypeDiffNormalized_Crop_faceTrue_BackendHC_Large_boxTrue_Large_size1.5_Dyamic_DetFalse_det_len30_Median_face_boxFalse/storage/PhysMambaSF_sp/TrainedModels/PURE_PURE_PURE_PhysMambaSF_fc_sig_round_mlti_shrdMLP_tasknorm_samedim_moe_pertsk_scalefuse_3layer_all_config_freqloss_harm_16_Epoch39.pth"
