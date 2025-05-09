@@ -9,7 +9,7 @@ class PSDProjector(nn.Module):
     frequencies using vectorised sin/cos dot‑products.
     Keeps its basis in a registered buffer for speed.
     """
-    def __init__(self, Fs: float, bpm_low=45, bpm_high=150, step=1.0):
+    def __init__(self, Fs: float, bpm_low=45, bpm_high=150, step=1.0,hann=True):
         super().__init__()
         # build k vector (1×F)
         bpm = torch.arange(bpm_low, bpm_high, step)          # (F,)
@@ -17,7 +17,8 @@ class PSDProjector(nn.Module):
         self.register_buffer("k", hz)
         self.step = step                        # non‑trainable
         self.Fs = Fs
-        self.basis_T = None                                  # lazy built
+        self.basis_T = None 
+        self.hann = hann                                 # lazy built
 
     def _build_basis(self, T: int, device):
         n = torch.arange(T, device=device).float()           # (T,)
@@ -37,7 +38,8 @@ class PSDProjector(nn.Module):
         sin, cos = self.basis_T            # each (F,T)
 
         # window – optional Hann
-        window = torch.hann_window(T, device=x.device)
+        window = torch.hann_window(T, device=x.device) if self.hann else 1.0
+
         xw = x * window                    # (B,T)
 
         # dot products
