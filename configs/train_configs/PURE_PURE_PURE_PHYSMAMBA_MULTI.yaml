@@ -1,10 +1,10 @@
 BASE: ['']
-TOOLBOX_MODE: "only_test"  # "train_and_test" or "only_test"
+TOOLBOX_MODE: "train_and_test"  # "train_and_test" or "only_test"
 TRAIN:
   BATCH_SIZE: 4
   EPOCHS: 50      
   LR: 4e-4
-  MODEL_FILE_NAME: PURE_PURE_PURE_PhysMambaSF_fc_sig_round_mlti_shrdMLP_tasknorm_samedim_moe_pertsk_scalefuse_3layer_all_config_oldfreqloss_harm_13
+  MODEL_FILE_NAME: PURE_PURE_PURE_PhysMambaSF_fc_sig_round_mlti_shrdMLP_tasknorm_samedim_moe_pertsk_scalefuse_3layer_all_config_old_B
   PLOT_LOSSES_AND_LR: True
   LEARNABLE_BALANCE: False      # if False, λ will stay at INIT_LAMBDA
   INIT_LAMBDA: 0.2             # initial λ in (0,1)

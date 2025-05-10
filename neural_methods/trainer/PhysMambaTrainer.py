@@ -10,6 +10,7 @@ from scipy.signal import welch
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter, MaxNLocator
 
+from tools.bayesagg_rppg.physmamba_bayesagg import PhysMambaBayesAgg
 # from neural_methods.model.PhysMambaMultiTask import PhysMambaMultiTask  # <-- import your multi-task model
 from neural_methods.model.PhysMamba import PhysMambaMultiTask  # <-- import your multi-task model
 from neural_methods.trainer.BaseTrainer import BaseTrainer
@@ -18,6 +19,7 @@ from neural_methods.loss.FrequencyHybrid import frequency_loss_waveform_fine
 from neural_methods.loss.torchlosscomputer_fine import PSDProjector
 
 from evaluation.metrics import calculate_metrics  # or your custom metric function(s)
+
 
 
 class PhysMambaMultiTaskTrainer(BaseTrainer):
@@ -104,6 +106,45 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 hann=True
             ).to(self.device)
 
+            def _hr_mc_loss(pred, gt):
+                # loss_np = self.criterion_hr(pred, gt)
+                # loss_fr, _ = frequency_loss_waveform_fine(
+                #     pred_wave = pred,
+                #     gt_wave   = gt,
+                #     projector = self.psd_projector,
+                #     std       = 3.0,
+                #     tau       = 4.0,
+                #     scale_ce  = 60.0,
+                #     w_ce      = 50.0,
+                #     w_kl      = 0.0,
+                #     w_reg     = 3.0,
+                #     w_harm    = 0.25,
+                #     eps_bpm   = 8.0,
+                #     r_max     = 0.45,
+                # )
+                # return self.w_np * loss_np + self.w_freq * loss_fr
+                return self.criterion_hr(pred, gt)          # no frequency term here!
+
+            # self.bagg = PhysMambaBayesAgg(
+            #     gamma        = config.get('BAGG_GAMMA', 1e-3),
+            #     sqrt_power   = config.get('BAGG_SQRTPOWER', .5),
+            #     num_mc_samples = config.get('BAGG_SAMPLES', 128),
+            #     hr_loss_fn   = lambda pred, gt:
+            #                     self.w_np * self.criterion_hr(pred, gt) +
+            #                     self.w_freq * frequency_loss_waveform(pred, gt,
+            #                             Fs=self.fs, diff_flag=self.diff_flag)[0],
+            #     spo2_loss_fn = self.criterion_spo2)
+
+            self.bagg = PhysMambaBayesAgg(
+                gamma          = config.get('BAGG_GAMMA', 1e-3),
+                sqrt_power     = config.get('BAGG_SQRTPOWER', .5),
+                num_mc_samples = config.get('BAGG_SAMPLES', 128),
+                hr_loss_fn     = _hr_mc_loss,
+                spo2_loss_fn   = self.criterion_spo2,
+            )
+
+
+
         elif config.TOOLBOX_MODE == "only_test":
             # In test mode, we just create the model; no need for optimizer/scheduler
             pass
@@ -176,7 +217,9 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 spo2_label = label[:, 1, :]  # [B, T]
 
                 # Forward pass
-                rppg_pred, spo2_pred, λ = self.model(data)   # rppg_pred: [B, T], spo2_pred: [B, T]
+                # rppg_pred, spo2_pred, λ = self.model(data)   # rppg_pred: [B, T], spo2_pred: [B, T]
+
+                rppg_pred, spo2_pred, λ, rep_flat = self.model(data)
 
                 # Optional normalization for HR
                 rppg_pred = (rppg_pred - rppg_pred.mean(dim=-1, keepdim=True)) / (rppg_pred.std(dim=-1, keepdim=True) + 1e-6)
@@ -216,16 +259,39 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 hr_loss  = self.w_np * loss_np + self.w_freq * loss_freq
 
                 spo2_loss = self.criterion_spo2(spo2_pred, spo2_label)    # RMSE for SpO2
-                total_loss = λ * hr_loss + (1.0 - λ) * spo2_loss
+                # total_loss = λ * hr_loss + (1.0 - λ) * spo2_loss
 
-                # Backpropagation
+                # ---------- purely for logging ----------
+                # Detach λ so this op is ignored by autograd; the two task‑losses
+                # keep their gradients for BayesAgg.
+                with torch.no_grad():
+                    total_loss = λ.detach() * hr_loss + (1.0 - λ.detach()) * spo2_loss
+
+
+                # # Backpropagation
+                # self.optimizer.zero_grad()
+                # total_loss.backward()
+
+                # #  clip the global ℓ2‑norm *here*
+                # torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+
+                # self.optimizer.step()
+
+                # ----------------  BAYES‑AGG gradient --------------------
                 self.optimizer.zero_grad()
-                total_loss.backward()
-
-                #  clip the global ℓ2‑norm *here*
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
-
+                self.bagg.backward(
+                    losses           = torch.stack([hr_loss, spo2_loss]),
+                    last_layer_params= [self.model.ConvLast_hr.weight,
+                                        self.model.ConvLast_hr.bias,
+                                        self.model.ConvLast_spo2.weight,
+                                        self.model.ConvLast_spo2.bias],
+                    representation   = rep_flat,
+                    labels_r         = hr_label.view(-1),
+                    labels_s         = spo2_label.contiguous().view(-1) ) # either style is fine
+                # task‑heads already have .grad from bagg.backward_last_layer
                 self.optimizer.step()
+
+
                 self.scheduler.step()
 
                 running_loss += total_loss.item()
@@ -313,7 +379,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 hr_label = label[:, 0, :]
                 spo2_label = label[:, 1, :]
 
-                rppg_pred, spo2_pred,λ = self.model(data)
+                rppg_pred, spo2_pred,λ,_ = self.model(data)
                 # spo2_pred = spo2_pred.squeeze(-1)
 
                 # Optional normalization for HR
@@ -552,7 +618,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 vid, lbl = batch[0].to(self.device), batch[1].to(self.device)   # vid [B,3,T,H,W] ; lbl [B,2,T]
                 subj_ids, sort_ids = batch[2], batch[3]
 
-                rppg_pred, spo2_pred, _ = self.model(vid)                       # shapes [B,T]
+                rppg_pred, spo2_pred, _ ,_= self.model(vid)                       # shapes [B,T]
 
                 for i in range(vid.size(0)):
                     sid  = subj_ids[i]

@@ -388,6 +388,12 @@ class PhysMambaMultiTask(nn.Module):
             requires_grad=learnable_balance,
         )
 
+        #  PhysMambaMultiTask.__init__  (after layers are created)
+        for bn in (self.hr_head_norm, self.spo2_head_norm):
+            bn.eval()                       # fixes running_mean / var
+            bn.weight.requires_grad_(False)
+            bn.bias.requires_grad_(False)
+
     # -----------------------------------------------------------------
     @property
     def lambda_task(self) -> torch.Tensor:
@@ -504,9 +510,12 @@ class PhysMambaMultiTask(nn.Module):
         feat_r = self.shared_mlp(feat_r)
         feat_s = self.shared_mlp(feat_s)
 
+        # ---- NEW: pick one stream as *the* shared rep ------------
+        rep_flat = feat_r.flatten(2).transpose(1, 2)   # (B*T, 48)
+
         rppg = self.ConvLast_hr(self.hr_head_norm(feat_r)).view(b, self.frames)
         spo2 = self.ConvLast_spo2(self.spo2_head_norm(feat_s)).view(b, self.frames)
         # spo2 = rounding_sigmoid_approximation(100.0 * torch.sigmoid(spo2), k=10.0)
         spo2 = rounding_sigmoid_approximation(100.0 * torch.sigmoid(spo2), k=self.k_round)
 
-        return rppg, spo2, self.lambda_task
+        return rppg, spo2, self.lambda_task,rep_flat
