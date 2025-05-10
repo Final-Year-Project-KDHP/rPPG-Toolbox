@@ -271,55 +271,131 @@ class ExactMoments(Moments):
         E_g_g = (2 ** 2) * (E_ww_y_2 - 2 * E_wxww_y + E_wxwxww)
         return E_g_g
 
+    # def compute_moments(self,
+    #                     features: torch.Tensor,
+    #                     labels: torch.Tensor,
+    #                     p_t: torch.distributions) -> (torch.Tensor, torch.Tensor, torch.Tensor):
+    #     """
+    #     Assume independence between all outputs
+    #     :param features: hidden layer representation [bs, dim]
+    #     :param labels: labels for each task and outputs [bs, n_tasks * n_outputs]
+    #     :param p_t: A Gaussian distribution over the parameters assuming [n_tasks * n_outputs, dim]
+    #     :return: expected value and covariance of the gradient
+    #     """
+
+    #     rep_dim = features.shape[-1]
+    #     h_L = features.detach().clone()
+
+    #     μ = p_t.mean[:, :rep_dim]
+    #     Σ = p_t.covariance_matrix[:, :rep_dim, :rep_dim]
+
+    #     μμ = torch.einsum('od,oe->ode', μ, μ)
+    #     Σ_μμ = Σ + μμ
+    #     Σ_μμ_neg = Σ - μμ
+
+    #     E_w = μ
+    #     E_ww = Σ_μμ
+
+    #     μ_h = torch.einsum('od,be->obde', μ, h_L).permute(1, 0, 2, 3)  # verified
+    #     μ_h_Σ_μμ = torch.einsum('bode,oef->bodf', μ_h, Σ_μμ)  # verified
+    #     Σ_μμ_μ_h = torch.einsum('ode,bofe->bodf', Σ_μμ, μ_h)  # verified
+    #     h_μ_Σ_μμ_neg = torch.einsum('bd,od,oef->boef', h_L, μ, Σ_μμ_neg)  # verified
+    #     E_wxww = μ_h_Σ_μμ + Σ_μμ_μ_h + h_μ_Σ_μμ_neg  # verified
+
+    #     hh = torch.einsum('bd,be->bde', h_L, h_L)
+    #     hh_hh = hh + hh.permute(0, 2, 1)
+    #     Σ_μμ_hh_hh_Σ_μμ = torch.einsum('ode,bef,ofg->bodg', Σ_μμ, hh_hh, Σ_μμ)  # verified
+    #     μ_hh_μ_Σ_μμ_neg = torch.einsum('od,bde,oe,ofg->bofg', μ, hh, μ, Σ_μμ_neg)  # verified
+    #     hhΣ = torch.einsum('bdf,ofe->bode', hh, Σ)
+    #     tr_hhΣ = torch.diagonal(hhΣ, dim2=-2, dim1=-1).sum(-1)
+    #     tr_hhΣ_Σ_μμ = torch.einsum('bo,ode->bode', tr_hhΣ, Σ_μμ)  # verified
+    #     E_wxwxww = Σ_μμ_hh_hh_Σ_μμ + μ_hh_μ_Σ_μμ_neg + tr_hhΣ_Σ_μμ
+
+    #     E_g = self.first_moment(h_L, labels, E_w, E_ww)
+    #     E_g_g = self.second_moment(labels, E_ww, E_wxww, E_wxwxww)
+
+    #     E_gE_g = torch.einsum('bod,boe->bode', E_g, E_g)
+    #     Σ_g = E_g_g - E_gE_g
+    #     Σ_g = torch.clamp(torch.diagonal(Σ_g.detach(), dim1=-2, dim2=-1), min=1e-8)
+    #     Σ_g = Σ_g ** self.sqrt_power
+
+    #     return (E_g, Σ_g)
+
+
     def compute_moments(self,
-                        features: torch.Tensor,
-                        labels: torch.Tensor,
-                        p_t: torch.distributions) -> (torch.Tensor, torch.Tensor, torch.Tensor):
-        """
-        Assume independence between all outputs
-        :param features: hidden layer representation [bs, dim]
-        :param labels: labels for each task and outputs [bs, n_tasks * n_outputs]
-        :param p_t: A Gaussian distribution over the parameters assuming [n_tasks * n_outputs, dim]
-        :return: expected value and covariance of the gradient
-        """
+                            features: torch.Tensor,
+                            labels:   torch.Tensor,
+                            p_t:      torch.distributions
+                            ) -> Tuple[torch.Tensor, torch.Tensor]:
+            """
+            Closed‑form first & second gradient moments for squared‑error
+            regression.  Works for any output‑dimension, keeps bias, and
+            ignores stray singleton batch dims from the posterior.
+            """
+            rep_dim = features.shape[-1]            # 48
+            h_L     = features.detach().clone()     # (N,D)
 
-        rep_dim = features.shape[-1]
-        h_L = features.detach().clone()
+            # ---- posterior parameters (strip singleton dims) -------------
+            # μ = p_t.mean         [..., :rep_dim].squeeze()         # (O,D)
+            # Σ = p_t.covariance_matrix[..., :rep_dim, :rep_dim]\
+            #                         .squeeze(0)                 # (O,D,D)
 
-        μ = p_t.mean[:, :rep_dim]
-        Σ = p_t.covariance_matrix[:, :rep_dim, :rep_dim]
+            # μ = p_t.mean         [..., :rep_dim]                    # (1,48) ✅
+            # Σ = p_t.covariance_matrix[..., :rep_dim, :rep_dim]      # (1,48,48) ✅
 
-        μμ = torch.einsum('od,oe->ode', μ, μ)
-        Σ_μμ = Σ + μμ
-        Σ_μμ_neg = Σ - μμ
+            μ = p_t.mean         [..., :rep_dim].reshape(-1, rep_dim)            # (O,48) with O := ∏ batch dims
+            Σ = p_t.covariance_matrix[..., :rep_dim, :rep_dim].reshape(-1, rep_dim, rep_dim)    # (O,48,48)            
 
-        E_w = μ
-        E_ww = Σ_μμ
+            if μ.dim() == 1:          # O==1 → promote to (1,D)
+                μ = μ.unsqueeze(0)
+                Σ = Σ.unsqueeze(0)     # (1,D,D)
 
-        μ_h = torch.einsum('od,be->obde', μ, h_L).permute(1, 0, 2, 3)  # verified
-        μ_h_Σ_μμ = torch.einsum('bode,oef->bodf', μ_h, Σ_μμ)  # verified
-        Σ_μμ_μ_h = torch.einsum('ode,bofe->bodf', Σ_μμ, μ_h)  # verified
-        h_μ_Σ_μμ_neg = torch.einsum('bd,od,oef->boef', h_L, μ, Σ_μμ_neg)  # verified
-        E_wxww = μ_h_Σ_μμ + Σ_μμ_μ_h + h_μ_Σ_μμ_neg  # verified
+            O = μ.size(0)             # #outputs, normally 1
 
-        hh = torch.einsum('bd,be->bde', h_L, h_L)
-        hh_hh = hh + hh.permute(0, 2, 1)
-        Σ_μμ_hh_hh_Σ_μμ = torch.einsum('ode,bef,ofg->bodg', Σ_μμ, hh_hh, Σ_μμ)  # verified
-        μ_hh_μ_Σ_μμ_neg = torch.einsum('od,bde,oe,ofg->bofg', μ, hh, μ, Σ_μμ_neg)  # verified
-        hhΣ = torch.einsum('bdf,ofe->bode', hh, Σ)
-        tr_hhΣ = torch.diagonal(hhΣ, dim2=-2, dim1=-1).sum(-1)
-        tr_hhΣ_Σ_μμ = torch.einsum('bo,ode->bode', tr_hhΣ, Σ_μμ)  # verified
-        E_wxwxww = Σ_μμ_hh_hh_Σ_μμ + μ_hh_μ_Σ_μμ_neg + tr_hhΣ_Σ_μμ
+            # ---- helper expectations -------------------------------------
+            μμ      = torch.einsum('od,oe->ode', μ, μ)             # (O,D,D)
+            Σ_μμ    = Σ + μμ
+            Σ_μμ_neg= Σ - μμ
 
-        E_g = self.first_moment(h_L, labels, E_w, E_ww)
-        E_g_g = self.second_moment(labels, E_ww, E_wxww, E_wxwxww)
+            # E[w] and E[wwᵀ]
+            E_w  = μ                             # (O,D)
+            E_ww = Σ_μμ                          # (O,D,D)
 
-        E_gE_g = torch.einsum('bod,boe->bode', E_g, E_g)
-        Σ_g = E_g_g - E_gE_g
-        Σ_g = torch.clamp(torch.diagonal(Σ_g.detach(), dim1=-2, dim2=-1), min=1e-8)
-        Σ_g = Σ_g ** self.sqrt_power
+            # E[w x wwᵀ] ----------------------------------------------------
+            μ_h     = torch.einsum('od,be->obde', μ, h_L).permute(1,0,2,3)
+            μ_h_Σ   = torch.einsum('bode,oef->bodf', μ_h, Σ_μμ)
+            Σ_μ_h   = torch.einsum('ode,bofe->bodf', Σ_μμ, μ_h)
+            h_μ_Σn  = torch.einsum('bd,od,oef->boef', h_L, μ, Σ_μμ_neg)
+            E_wxww  = μ_h_Σ + Σ_μ_h + h_μ_Σn                       # (N,O,D,D)
 
-        return (E_g, Σ_g)
+            # E[w x w x wwᵀ] -----------------------------------------------
+            hh      = torch.einsum('bd,be->bde', h_L, h_L)          # (N,D,D)
+            hh_hh   = hh + hh.transpose(-1,-2)
+            Σ_hh_Σ  = torch.einsum('ode,bef,ofg->bodg', Σ_μμ,
+                                                    hh_hh, Σ_μμ)
+            μ_hh_μn = torch.einsum('od,bde,oe,ofg->bofg',
+                                                    μ, hh, μ, Σ_μμ_neg)
+            hhΣ     = torch.einsum('bdf,ofe->bode', hh, Σ)
+            tr      = torch.diagonal(hhΣ, 0, -2,-1).sum(-1)        # (N,O)
+            tr_term = torch.einsum('bo,ode->bode', tr, Σ_μμ)
+            E_wxwxww= Σ_hh_Σ + μ_hh_μn + tr_term                   # (N,O,D,D)
+
+            # ---- first & second moments of ∇ℓ -----------------------------
+            E_g   = 2 * ( torch.einsum('ode,bd->boe', E_ww, h_L)
+                        - torch.einsum('bo,od->bod', labels, E_w) )  # (N,O,D)
+
+            E_g_g = (2**2) * (
+                    torch.einsum('bo,ode->bode', labels**2, E_ww)
+                    - 2 * torch.einsum('bo,bode->bode', labels, E_wxww)
+                    + E_wxwxww )                                      # (N,O,D,D)
+
+            # diagonal covariance & power‑scaling --------------------------
+            Σ_g = torch.diagonal(E_g_g - torch.einsum('bod,boe->bode', E_g, E_g),
+                                dim1=-2, dim2=-1)                     # (N,O,D)
+            Σ_g = torch.clamp(Σ_g, min=1e-8) ** self.sqrt_power
+
+            return E_g, Σ_g
+        
 
 
 class ApproxMoments(Moments):
@@ -526,42 +602,35 @@ class LastLayerPosteriorRegression(LastLayerPosterior):
 
         return prior_mean, prior_precision
 
-    def posterior(self, 
-                  features: torch.Tensor, 
-                  labels: torch.Tensor, 
-                  prior_mean: torch.Tensor, 
-                  prior_precision: torch.Tensor) -> torch.distributions:
-        """
-        Obtain posterior distribution according to standard Gaussian parametric regression.
-        Assume independence between classes and tasks and the same obs noise for all classes and tasks
-        :param features: [bs, dim]
-        :param labels: [bs, n_tasks * n_outputs]
-        :param prior_mean: [n_tasks * n_outputs, dim]
-        :param prior_precision: [dim, dim]
-        :return: posterior distributions over tasks * outputs (under independence assumption)
-        """
-        h_L = features.detach().clone()
-        rep_dim = h_L.shape[-1]
+    def posterior(self, features: torch.Tensor, labels: torch.Tensor,
+                prior_mean: torch.Tensor, prior_precision: torch.Tensor):
 
-        # assume the same label noise and prior covariance for all tasks
-        Λ_prior = prior_precision[:rep_dim, :rep_dim]
-        Λ = Λ_prior + (1 / self.obs_noise) * (h_L.t() @ h_L)
+        h_L = features.detach().clone()                           # (N,48)
+        N   = h_L.size(0)
+        device, dtype = h_L.device, h_L.dtype
 
-        scale_tri_Λ = psd_safe_cholesky(Λ)
-        Σ = torch.cholesky_solve(torch.eye(scale_tri_Λ.shape[-1],
-                                           dtype=h_L.dtype, device=h_L.device), scale_tri_Λ).unsqueeze(0)
-        scale_tri_Σ = psd_safe_cholesky(Σ)
+        # ----  add bias column -----------------------------------
+        ones = torch.ones(N, 1, device=device, dtype=dtype)
+        X    = torch.cat([h_L, ones], dim=1)                      # (N,49)
+        Dp   = X.size(1)                                          # 49
 
-        μ_prior = prior_mean[:, :rep_dim, None]
-        w_mean = Σ @ ((Λ_prior.unsqueeze(0) @ μ_prior).squeeze(-1) +
-                      ((1 / self.obs_noise) * h_L.t() @ labels).t()).unsqueeze(-1)
+        Λ_prior = prior_precision                                 # (49,49)
+        Λ       = Λ_prior + (1. / self.obs_noise) * (X.t() @ X)   # (49,49)
 
-        p_t = torch.distributions.multivariate_normal.MultivariateNormal(
-            loc=w_mean.squeeze(-1),
-            scale_tril=scale_tri_Σ
+        L_Λ = psd_safe_cholesky(Λ)
+        Σ   = torch.cholesky_solve(torch.eye(Dp, device=device, dtype=dtype),
+                                L_Λ).unsqueeze(0)              # (1,49,49)
+        L_Σ = psd_safe_cholesky(Σ)
+
+        μ_prior = prior_mean[:, :, None]                          # (out,49,1)
+        y_term  = ((1. / self.obs_noise) * X.t() @ labels).unsqueeze(0)  # (1,49)
+
+        w_mean  = Σ @ ((Λ_prior.unsqueeze(0) @ μ_prior).squeeze(-1) + y_term).unsqueeze(-1)
+
+        return torch.distributions.multivariate_normal.MultivariateNormal(
+            loc=w_mean.squeeze(-1),                               # (out,49)
+            scale_tril=L_Σ                                        # shared across outputs
         )
-
-        return p_t
 
     # def compute_posterior(self,
     #                       last_layer_params: Union[List[torch.nn.parameter.Parameter], torch.Tensor],
