@@ -8,74 +8,45 @@ import warnings
 
 
 MAX_SIZE = 10000
-
-# Adapted from: https://github.com/cornellius-gp/linear_operator/blob/main/linear_operator/utils/cholesky.py
+# -----------------------------------------------------------------
+# ►► 1.  numerically safer Cholesky  ◄◄
+# -----------------------------------------------------------------
 def psd_safe_cholesky(A, upper=False, out=None, jitter=None, max_tries=None):
     """
-    Adapted from: https://github.com/cornellius-gp/linear_operator/blob/main/linear_operator/utils/cholesky.py
-    
-    Compute the Cholesky decomposition of A. If A is only p.s.d, add a small jitter to the diagonal.
-    Args:
-        :attr:`A` (Tensor):
-            The tensor to compute the Cholesky decomposition of
-        :attr:`upper` (bool, optional):
-            See torch.cholesky
-        :attr:`out` (Tensor, optional):
-            See torch.cholesky
-        :attr:`jitter` (float, optional):
-            The jitter to add to the diagonal of A in case A is only p.s.d. If omitted,
-            uses settings.cholesky_jitter.value()
-        :attr:`max_tries` (int, optional):
-            Number of attempts (with successively increasing jitter) to make before raising an error.
+    Same API as torch.linalg.cholesky_ex but adds *relative* jitter when
+    A is only p.s.d.  Also falls back to CPU if a CUDA NaN appears.
     """
     L = _psd_safe_cholesky(A, out=out, jitter=jitter, max_tries=max_tries)
-    if torch.any(torch.isnan(L)):
+    if torch.isnan(L).any():
         L = _psd_safe_cholesky(A.cpu(), out=out,
-                               jitter=jitter, max_tries=max_tries).to(A.device)  # changed
-
+                               jitter=jitter,
+                               max_tries=max_tries).to(A.device)
     if upper:
-        if out is not None:
-            out = out.transpose_(-1, -2)
-        else:
-            L = L.mT
+        return L.mT
     return L
 
 
 def _psd_safe_cholesky(A, out=None, jitter=None, max_tries=None):
-    """
-    Adapted from: https://github.com/cornellius-gp/linear_operator/blob/main/linear_operator/utils/cholesky.py
-    """
-    
     L, info = torch.linalg.cholesky_ex(A, out=out)
+    if not info.any():
+        return L                                              # <- fast exit
 
-    if not torch.any(info):
-        return L
+    # ---------- add progressive relative jitter --------------
+    if jitter is None:
+        # start with 0.1 % of the diagonal magnitude
+        jitter = (A.diagonal(dim1=-2, dim2=-1).abs().mean() * 1e-3).item()
+    if max_tries is None:
+        max_tries = 25
 
-    isnan = torch.isnan(A)
-    if isnan.any():
-        raise warnings.warn(f"cholesky_cpu: {isnan.sum().item()} of "
-                            f"{A.numel()} elements of the {A.shape} tensor are NaN.")
-        exit(0)
-
-    if jitter is None: # changed
-        jitter = 1e-7 if A.dtype == torch.float32 else 1e-9 # changed
-    if max_tries is None: # changed
-        max_tries = 25 # changed
     Aprime = A.clone()
-    jitter_prev = 0
     for i in range(max_tries):
-        jitter_new = jitter * (10**i)
-        # add jitter only where needed
-        diag_add = ((info > 0) * (jitter_new - jitter_prev)).unsqueeze(-1).expand(*Aprime.shape[:-1])
-        Aprime.diagonal(dim1=-1, dim2=-2).add_(diag_add)
-        jitter_prev = jitter_new
-        warnings.warn(f"A not p.d., added jitter of {jitter_new:.1e} to the diagonal")
+        j = jitter * (10 ** i)
+        Aprime.diagonal(dim1=-2, dim2=-1).add_(j)
+        warnings.warn(f"cholesky: added diag jitter {j:.1e}")
         L, info = torch.linalg.cholesky_ex(Aprime, out=out)
-
-        if not torch.any(info):
+        if not info.any():
             return L
-    raise ValueError(f"Matrix not positive definite after repeatedly adding jitter up to {jitter_new:.1e}.")
-
+    raise ValueError("Matrix not positive definite even after jitter.")
 
 class BayesAggMTL:
     def __init__(self,
@@ -244,14 +215,10 @@ class GaussianAgg(AggScheme):
         :param Σ_g: variance of the gradient [bs, num_tasks, dim]
         :return: The gradient of the combined loss w.r.t the shared hidden layer
         """
-        Λ_g = (1 / Σ_g)
-        Λ_μ_g = Λ_g * μ_g
-
-        bs = μ_g.shape[0]
-        sum_inv_Λ_g = 1 / Λ_g.sum(dim=1)
-        dL_dh = sum_inv_Λ_g * Λ_μ_g.sum(1) / bs
-
-        return dL_dh
+        Λ_g     = 1.0 / Σ_g                      # precision
+        Λμ_sum  = (Λ_g * μ_g).sum(dim=1)         # Σ_t Λ μ   → [bs,D]
+        Λ_sumInv = 1.0 / Λ_g.sum(dim=1)          # 1 / Σ_t Λ → [bs,D]
+        return Λ_sumInv * Λμ_sum                 # [bs,D]
 
 
 class Moments:
@@ -522,6 +489,29 @@ class LastLayerPosteriorRegression(LastLayerPosterior):
         self.num_outputs = num_outputs
         self.obs_noise = obs_noise
         self.full_data_posterior = None
+
+    # helper to flatten possible Conv3d 1×1×1 kernels -----
+    @staticmethod
+    def _to_2d(w: torch.Tensor) -> torch.Tensor:
+        return w.view(w.size(0), -1) if w.dim() > 2 else w
+
+    # -----------------------------------------------------
+    def compute_posterior(self, last_layer_params, features, labels,
+                          full_train_features=None, full_train_labels=None):
+
+        # ----- flatten kernels & build W ------------------
+        if isinstance(last_layer_params, (list, tuple)):
+            ws = torch.cat([self._to_2d(w).detach().clone()
+                            for w in last_layer_params[::2]], dim=0)
+            bs = torch.cat([b.detach().clone()
+                            for b in last_layer_params[1::2]], dim=0)
+            if bs.dim() == 1:
+                bs = bs.unsqueeze(-1)
+            W = torch.cat([ws, bs], dim=1)                     # (out, D+1)
+        else:                                                  # tensor already
+            W = self._to_2d(last_layer_params)
+
+    
 
     def set_full_data_posterior(self, p_t: torch.distributions):
         self.full_data_posterior = p_t
