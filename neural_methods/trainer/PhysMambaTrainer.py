@@ -17,6 +17,8 @@ from neural_methods.loss.PhysNetNegPearsonLoss import Neg_Pearson  # your existi
 from neural_methods.loss.FrequencyHybrid import frequency_loss_waveform_fine
 from neural_methods.loss.torchlosscomputer_fine import PSDProjector
 
+from neural_methods.loss.MultiScaleSTFTLoss import MultiScaleSTFTLoss
+
 from evaluation.metrics import calculate_metrics  # or your custom metric function(s)
 
 
@@ -45,6 +47,9 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
         self.diff_flag = (config.TRAIN.DATA.PREPROCESS.LABEL_TYPE == "DiffNormalized")
         self.fs        = config.TRAIN.DATA.FS
 
+        self.w_stft = getattr(config.TRAIN, "W_STFT", 0.0) #0.3
+
+
         # Initialize histories for overall loss and learning rate
         self.train_loss_history = []
         self.valid_loss_history = []
@@ -69,6 +74,13 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
             cross_fuse_cfg = config.MODEL.CROSS_FUSE,
             k_round        = config.MODEL.ROUNDING_SIGMOID.K
         ).to(self.device)
+
+        self.criterion_stft = MultiScaleSTFTLoss(
+                sampling_rate = self.fs,
+                win_lengths   =[16, 64, 128],# getattr(config.MODEL.STFT_LOSS.WIN_LENGTHS,[128, 512, 1024]),
+                n_mels        = [4, 16, 32],#getattr(config.MODEL.STFT_LOSS.N_MELS, [16, 32, 64]),
+                log_weight    = 1.0,#getattr(config.MODEL.STFT_LOSS.LOG_WEIGHT,1.0),
+                mag_weight    = 0.1) #getattr(config.MODEL.STFT_LOSS.MAG_WEIGHT,0.1))
 
         if self.num_of_gpu > 1:
             self.model = torch.nn.DataParallel(
@@ -213,7 +225,9 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                         r_max    = 0.45
                 )
 
-                hr_loss  = self.w_np * loss_np + self.w_freq * loss_freq
+                stft_loss = self.criterion_stft(rppg_pred, hr_label)
+                
+                hr_loss  = self.w_np * loss_np + self.w_freq * loss_freq+self.w_stft * stft_loss
 
                 spo2_loss = self.criterion_spo2(spo2_pred, spo2_label)    # RMSE for SpO2
                 total_loss = λ * hr_loss + (1.0 - λ) * spo2_loss
@@ -348,7 +362,8 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                         r_max    = 0.45
                 )
 
-                hr_loss  = self.w_np * loss_np + self.w_freq * loss_freq
+                stft_loss = self.criterion_stft(rppg_pred, hr_label)
+                hr_loss  = self.w_np * loss_np + self.w_freq * loss_freq + self.w_stft * stft_loss
 
                 spo2_loss = torch.sqrt(torch.mean((spo2_pred - spo2_label) ** 2))
                 total_loss = λ * hr_loss + (1.0 - λ) * spo2_loss
