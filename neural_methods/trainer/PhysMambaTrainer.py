@@ -18,6 +18,7 @@ from neural_methods.loss.FrequencyHybrid import frequency_loss_waveform_fine
 from neural_methods.loss.torchlosscomputer_fine import PSDProjector
 
 from neural_methods.loss.MultiScaleSTFTLoss import MultiScaleSTFTLoss
+from neural_methods.loss.FFTDistance import fft_band_distance
 
 from evaluation.metrics import calculate_metrics  # or your custom metric function(s)
 
@@ -42,13 +43,14 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
         self.min_valid_loss = None
         self.best_epoch = 0
 
-        self.w_np  = getattr(config.TRAIN, "W_NEG_PEARSON", 1.0)
+        self.w_np  = getattr(config.TRAIN, "W_NEG_PEARSON", 0.0)
         self.w_freq = getattr(config.TRAIN, "W_FREQ",        0.0)
         self.diff_flag = (config.TRAIN.DATA.PREPROCESS.LABEL_TYPE == "DiffNormalized")
         self.fs        = config.TRAIN.DATA.FS
 
         self.w_stft = getattr(config.TRAIN, "W_STFT", 0.0) #0.3
 
+        self.w_fft= getattr(config.TRAIN, "W_FFT", 1.0) #0.3
 
         # Initialize histories for overall loss and learning rate
         self.train_loss_history = []
@@ -210,24 +212,29 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 #         tau         = 1.5
                 #         )
 
-                loss_freq, aux = frequency_loss_waveform_fine(
-                        pred_wave=rppg_pred,
-                        gt_wave  =hr_label,
-                        projector=self.psd_projector,
-                        std      = 3.0,
-                        tau      = 4.0,
-                        scale_ce = 60.0,    # NEW param
-                        w_ce     = 50.0,#8
-                        w_kl     = 0.0,
-                        w_reg    = 3.0,#3
-                        w_harm   = 0.25,
-                        eps_bpm  = 8.0,
-                        r_max    = 0.45
-                )
+                # loss_freq, aux = frequency_loss_waveform_fine(
+                #         pred_wave=rppg_pred,
+                #         gt_wave  =hr_label,
+                #         projector=self.psd_projector,
+                #         std      = 3.0,
+                #         tau      = 4.0,
+                #         scale_ce = 60.0,    # NEW param
+                #         w_ce     = 50.0,#8
+                #         w_kl     = 0.0,
+                #         w_reg    = 3.0,#3
+                #         w_harm   = 0.25,
+                #         eps_bpm  = 8.0,
+                #         r_max    = 0.45
+                # )
 
-                stft_loss = self.criterion_stft(rppg_pred, hr_label)
+                loss_fft, aux = fft_band_distance(rppg_pred, hr_label, fs=self.fs)
+
+                # stft_loss = self.criterion_stft(rppg_pred, hr_label)
                 
-                hr_loss  = self.w_np * loss_np + self.w_freq * loss_freq+self.w_stft * stft_loss
+
+                # hr_loss  = self.w_np * loss_np + self.w_freq * loss_freq+self.w_stft * stft_loss
+
+                hr_loss = self.w_np*loss_np + self.w_fft*loss_fft
 
                 spo2_loss = self.criterion_spo2(spo2_pred, spo2_label)    # RMSE for SpO2
                 total_loss = λ * hr_loss + (1.0 - λ) * spo2_loss
@@ -347,23 +354,26 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 #         tau         = 1.5
                 #         )
 
-                loss_freq, aux = frequency_loss_waveform_fine(
-                        pred_wave=rppg_pred,
-                        gt_wave  =hr_label,
-                        projector=self.psd_projector,
-                        std      = 3.0,
-                        tau      = 4.0,
-                        scale_ce = 60.0,    # NEW param
-                        w_ce     = 50.0,
-                        w_kl     = 0.0,
-                        w_reg    = 3.0,#3
-                        w_harm   = 0.25,
-                        eps_bpm  = 8.0,
-                        r_max    = 0.45
-                )
+                # loss_freq, aux = frequency_loss_waveform_fine(
+                #         pred_wave=rppg_pred,
+                #         gt_wave  =hr_label,
+                #         projector=self.psd_projector,
+                #         std      = 3.0,
+                #         tau      = 4.0,
+                #         scale_ce = 60.0,    # NEW param
+                #         w_ce     = 50.0,
+                #         w_kl     = 0.0,
+                #         w_reg    = 3.0,#3
+                #         w_harm   = 0.25,
+                #         eps_bpm  = 8.0,
+                #         r_max    = 0.45
+                # )
+                loss_fft, aux = fft_band_distance(rppg_pred, hr_label, fs=self.fs)
 
-                stft_loss = self.criterion_stft(rppg_pred, hr_label)
-                hr_loss  = self.w_np * loss_np + self.w_freq * loss_freq + self.w_stft * stft_loss
+                # stft_loss = self.criterion_stft(rppg_pred, hr_label)
+                # hr_loss  = self.w_np * loss_np + self.w_freq * loss_freq + self.w_stft * stft_loss
+
+                hr_loss = self.w_np*loss_np + self.w_fft*loss_fft
 
                 spo2_loss = torch.sqrt(torch.mean((spo2_pred - spo2_label) ** 2))
                 total_loss = λ * hr_loss + (1.0 - λ) * spo2_loss

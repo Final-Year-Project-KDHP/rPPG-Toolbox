@@ -59,5 +59,5 @@ def fft_band_distance(
     P2 = mag_p_band[torch.arange(B), k2]
     loss_h = F.relu(P2 / (P1 + eps) - r_max).mean()
 
-    total = loss_mag + loss_h
+    total = loss_mag #+ loss_h
     return total, dict(mag=loss_mag.item(), harm=loss_h.item())
