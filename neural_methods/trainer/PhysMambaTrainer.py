@@ -227,7 +227,24 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 #         r_max    = 0.45
                 # )
 
-                loss_fft, aux = fft_band_distance(rppg_pred, hr_label, fs=self.fs)
+                # -------- ground‑truth HR scalar (no grad) ----------
+                gt_hr_bpm = _batch_get_hr_bpm(hr_label, fs=self.fs).to(self.device)
+
+                # -------- frequency / FFT loss ----------
+                loss_fft, aux = fft_band_distance(
+                        pred_wave   = rppg_pred,
+                        gt_wave     = hr_label,          # same shape as pred
+                        fs          = self.fs,
+                        gt_hr_bpm   = gt_hr_bpm,
+                        pad_N       = 512,#self.config.MODEL.FFT_LOSS.PAD_N,
+                        r_max       = 0.15,#self.config.MODEL.FFT_LOSS.R_MAX,
+                        tau         = 2.0,#self.config.MODEL.FFT_LOSS.TAU,
+                        w_reg       = 1,#self.config.MODEL.FFT_LOSS.W_REG,
+                        p_norm      = 1,#self.config.MODEL.FFT_LOSS.P_NORM,
+                        use_power   = False #self.config.MODEL.FFT_LOSS.USE_POWER
+                )
+
+                # loss_fft, aux = fft_band_distance(rppg_pred, hr_label, fs=self.fs)
 
                 # stft_loss = self.criterion_stft(rppg_pred, hr_label)
                 
@@ -368,7 +385,25 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
                 #         eps_bpm  = 8.0,
                 #         r_max    = 0.45
                 # )
-                loss_fft, aux = fft_band_distance(rppg_pred, hr_label, fs=self.fs)
+                # loss_fft, aux = fft_band_distance(rppg_pred, hr_label, fs=self.fs)
+
+                                # -------- ground‑truth HR scalar (no grad) ----------
+                gt_hr_bpm = _batch_get_hr_bpm(hr_label, fs=self.fs).to(self.device)
+
+                # -------- frequency / FFT loss ----------
+                loss_fft, aux = fft_band_distance(
+                        pred_wave   = rppg_pred,
+                        gt_wave     = hr_label,          # same shape as pred
+                        fs          = self.fs,
+                        gt_hr_bpm   = gt_hr_bpm,
+                        pad_N       = 512,#self.config.MODEL.FFT_LOSS.PAD_N,
+                        r_max       = 0.15,#self.config.MODEL.FFT_LOSS.R_MAX,
+                        tau         = 2.0,#self.config.MODEL.FFT_LOSS.TAU,
+                        w_reg       = 1,#self.config.MODEL.FFT_LOSS.W_REG,
+                        p_norm      = 1,#self.config.MODEL.FFT_LOSS.P_NORM,
+                        use_power   = False #self.config.MODEL.FFT_LOSS.USE_POWER
+                )
+
 
                 # stft_loss = self.criterion_stft(rppg_pred, hr_label)
                 # hr_loss  = self.w_np * loss_np + self.w_freq * loss_freq + self.w_stft * stft_loss
@@ -624,6 +659,7 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
     # ------------------------------------------------------------
     # helper : MAE / RMSE  (keep as @staticmethod)
     # ------------------------------------------------------------
+
     @staticmethod
     def _mae_rmse(pred_dict, gt_dict):
         """
@@ -692,3 +728,20 @@ class PhysMambaMultiTaskTrainer(BaseTrainer):
     #     rmse = float(np.sqrt(np.mean((preds - gts) ** 2)))
     #     return mae, rmse
 
+#@staticmethod
+def _batch_get_hr_bpm(wave_batch: torch.Tensor,
+                    fs: float,
+                    bpm_min: int = 45,
+                    bpm_max: int = 150) -> torch.Tensor:
+    """
+    wave_batch : (B,T)   – torch on *any* device; will be moved to CPU
+    Returns    : (B,)    – torch.float32 (no grad)
+    """
+    hr_list = []
+    for w in wave_batch.cpu().numpy():
+        f, pxx = welch(w, fs, nfft=int(1e5/fs),
+                    nperseg=min(len(w)-1, 256))
+        mask = (f > bpm_min/60) & (f < bpm_max/60)
+        hr = f[mask][np.argmax(pxx[mask])] * 60.0
+        hr_list.append(hr)
+    return torch.tensor(hr_list, dtype=torch.float32)
