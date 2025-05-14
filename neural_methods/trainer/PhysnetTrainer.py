@@ -24,6 +24,7 @@ class PhysnetTrainer(BaseTrainer):
         """Inits parameters from args and the writer for TensorboardX."""
         super().__init__()
         self.device = torch.device(config.DEVICE)
+        print("device:", self.device)
         self.max_epoch_num = config.TRAIN.EPOCHS
         self.model_dir = config.MODEL.MODEL_DIR
         self.model_file_name = config.TRAIN.MODEL_FILE_NAME
@@ -71,6 +72,11 @@ class PhysnetTrainer(BaseTrainer):
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             self.model = self.model.to(self.config.DEVICE)
+            # for layer in [self.model.ConvBlock1, self.model.ConvBlock2]:
+            #     for param in layer.parameters():
+            #         param.requires_grad = False
+
+
         for epoch in range(self.max_epoch_num):
             print('')
             print(f"====Training Epoch: {epoch}====")
@@ -86,7 +92,7 @@ class PhysnetTrainer(BaseTrainer):
                                       batch[2]
               label = batch[1][:, 1:2, :].squeeze(1).to(dtype=torch.float32, device=self.device)
               mean_label = label.mean(dim=1)
-              mask = mean_label >= 90
+              mask = (mean_label >= 90) & (mean_label <= 100)
               if mask.sum() == 0:
                 continue  # Skip this batch if no valid samples
               data, label, mean_label = data[mask], label[mask], mean_label[mask]
@@ -112,7 +118,7 @@ class PhysnetTrainer(BaseTrainer):
               weighted_loss = sample_loss * lds_weights
               loss = torch.sqrt(weighted_loss.mean())
 
-            #   loss = F.mse_loss(rspo2.squeeze(), mean_label, reduction='mean')  # pure MSE
+            #   loss = F.mse_loss(rspo2.squeeze(), mean_label_combined, reduction='mean')  # pure MSE
             #   loss = torch.sqrt(loss)
               loss.backward()
               running_loss += loss.item()
@@ -166,13 +172,14 @@ class PhysnetTrainer(BaseTrainer):
                 label = label[:, 1:2, :].squeeze(1)
                 mean_label = label.mean(dim=1)
 
-                mask = mean_label >= 90
+                mask = (mean_label >= 90) & (mean_label <= 100)
                 if mask.sum() == 0:
                     continue
                 data, mean_label = data[mask], mean_label[mask]
 
                 rspo2, *_ = self.model(data)
-                loss = F.mse_loss(rspo2.squeeze(), mean_label, reduction='none')
+                # loss = F.mse_loss(rspo2.squeeze(), mean_label, reduction='none')
+                loss = F.l1_loss(rspo2.squeeze(), mean_label, reduction='none')  # MAE
                 valid_loss.append(loss)
 
             if len(valid_loss) == 0:
@@ -236,6 +243,8 @@ class PhysnetTrainer(BaseTrainer):
                 data, label = test_batch[0].to(
                     self.config.DEVICE), test_batch[1].to(self.config.DEVICE)
                 label= np.squeeze(label[:,1:2,:],axis=1)
+                
+                
                 rspo2, _, _, _ = self.model(data)
                 # print(label.ndim)
                 if label.ndim == 3:
@@ -247,7 +256,9 @@ class PhysnetTrainer(BaseTrainer):
 
                 for idx in range(batch_size):
                     label_mean = label[idx].mean().item()
-                    if label_mean < 90:
+                    
+                    # print(label_mean)
+                    if label_mean < 90 or label_mean > 100:
                         continue  # Skip samples where mean SpO2 < 90
                     subj_index = test_batch[2][idx]
                     sort_index = int(test_batch[3][idx])

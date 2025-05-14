@@ -68,6 +68,8 @@ class BaseLoader(Dataset):
         assert (config_data.BEGIN < config_data.END)
         assert (config_data.BEGIN > 0 or config_data.BEGIN == 0)
         assert (config_data.END < 1 or config_data.END == 1)
+        # config_data.DO_PREPROCESS=False
+        # print('DO_PREPROCESS:', config_data.DO_PREPROCESS)
         if config_data.DO_PREPROCESS:
             self.raw_data_dirs = self.get_raw_data(self.raw_data_path)
             self.preprocess_dataset(self.raw_data_dirs, config_data.PREPROCESS, config_data.BEGIN, config_data.END)
@@ -76,6 +78,7 @@ class BaseLoader(Dataset):
                 print('CACHED_PATH:', self.cached_path)
                 raise ValueError(self.dataset_name,
                                  'Please set DO_PREPROCESS to True. Preprocessed directory does not exist!')
+            # print("File list path:", self.file_list_path)
             if not os.path.exists(self.file_list_path):
                 print('File list does not exist... generating now...')
                 self.raw_data_dirs = self.get_raw_data(self.raw_data_path)

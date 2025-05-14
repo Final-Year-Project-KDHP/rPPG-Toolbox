@@ -336,10 +336,10 @@ def compute_lds_weights_with_plots(mean_labels, save_dir, num_bins=50, ks=7, a=2
     # Compute weights for all labels
     weights = []
     for label in mean_labels:
-        if label < 90:
+        if label < 90 or label > 100:
             weights.append(0.0)
         else:
-            bin_idx = np.digitize(label, bin_edges) - 1
+            bin_idx = np.clip(np.digitize(label, bin_edges) - 1, 0, num_bins - 1)
             eff_freq = eff_dist[bin_idx]
             weights.append(float(1.0 / (eff_freq + 1e-6)))
 

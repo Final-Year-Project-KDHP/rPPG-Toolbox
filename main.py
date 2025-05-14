@@ -127,6 +127,10 @@ def unsupervised_method_inference(config, data_loader):
 
 
 if __name__ == "__main__":
+    # print("Using device:", self.device)
+    print("CUDA device count:", torch.cuda.device_count())
+    print("Current device:", torch.cuda.current_device())
+    print("Device name:", torch.cuda.get_device_name(0))
     # parse arguments.
     parser = argparse.ArgumentParser()
     parser = add_args(parser)
@@ -136,8 +140,8 @@ if __name__ == "__main__":
 
     # configurations.
     config = get_config(args)
-    print('Configuration:')
-    print(config, end='\n\n')
+    # print('Configuration:')
+    # print(config, end='\n\n')
 
     data_loader_dict = dict() # dictionary of data loaders 
     if config.TOOLBOX_MODE == "train_and_test":
@@ -162,6 +166,8 @@ if __name__ == "__main__":
             train_loader = data_loader.VIPLLoader.VIPLLoader
         elif config.TRAIN.DATA.DATASET == "NBHR":
             train_loader = data_loader.NBHRLoader.NBHRLoader
+        elif config.TRAIN.DATA.DATASET == "VIDEOPULSE":
+            train_loader = data_loader.VIDEOPULSELoader.VIDEOPULSELoader
         else:
             raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
                              SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP.")
@@ -209,6 +215,8 @@ if __name__ == "__main__":
             raise ValueError("Validation dataset not specified despite USE_LAST_EPOCH set to False!")
         elif config.TRAIN.DATA.DATASET == "NBHR":
             valid_loader = data_loader.NBHRLoader.NBHRLoader
+        elif config.VALID.DATA.DATASET == "VIDEOPULSE":
+            valid_loader = data_loader.VIDEOPULSELoader.VIDEOPULSELoader
         else:
             raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
                              SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP")
@@ -253,6 +261,8 @@ if __name__ == "__main__":
             test_loader = data_loader.VIPLLoader.VIPLLoader
         elif config.TRAIN.DATA.DATASET == "NBHR":
             test_loader = data_loader.NBHRLoader.NBHRLoader
+        elif config.TEST.DATA.DATASET =="VIDEOPULSE":
+            test_loader = data_loader.VIDEOPULSELoader.VIDEOPULSELoader
         else:
             raise ValueError("Unsupported dataset! Currently supporting UBFC-rPPG, PURE, MMPD, \
                              SCAMPS, BP4D+ (Normal and BigSmall preprocessing), UBFC-PHYS and iBVP.")
